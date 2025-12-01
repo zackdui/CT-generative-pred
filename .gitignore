@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Virtual envs
+env/
+venv/
+.venv/
+.env
+ENV/
+env.bak/
+venv.bak/
+
+# Packaging artifacts
+build/
+dist/
+*.egg-info/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# ML training outputs
+lightning_logs/
+tensorboard/
+wandb/
+logs/
+
+# Editors
+.vscode/
+.idea/
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+

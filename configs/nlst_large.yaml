@@ -1,0 +1,33 @@
+# configs/nlst_large.yaml
+
+# Same as nlst_small.yaml, but using the "large" dataset JSON
+dataset_file_path: "${paths.shared_nlst_root}/all_nlst.json"
+
+num_images: 208
+max_followup: 6
+resample_pixel_spacing: true
+region_annotations_filepath: "${paths.shared_nlst_root}/annotations_122020.json"
+input_loader_name: dicom_loader
+class_bal: false
+assign_splits: true
+split_probs: [0.7, 0.1, 0.2]
+split_type: random
+cross_val_seed: 42
+slice_thickness_filter: 2.5
+min_num_images: 50
+img_dir: "${paths.shared_nlst_root}/nlst-ct-png"
+img_file_type: dicom
+eval_on_train: false
+test_rawinput_augmentations: []
+test_tnsr_augmentations: []
+train_rawinput_augmentations: []
+train_tnsr_augmentations: []
+cache_path: null
+img_size: [512, 512]
+ct_pixel_spacing: [0.703125, 0.703125, 2.5]
+use_annotations: []
+fix_seed_for_multi_image_augmentations: true
+resample_pixel_spacing_prob: 0.5
+always_resample_pixel_spacing: false
+use_risk_factors: false
+original_pad: true
