@@ -17,7 +17,7 @@ import json
 
 from .utils import pydicom_to_nifti, ants_crop_or_pad_like_torchio, nib_to_ants
 from CTFM.utils.config import load_config
-from CTFM.utils.registration_logger import RegistrationLogger, merge_log_into_parquet_sequential
+from CTFM.utils.custom_loggers import RegistrationLogger, merge_log_into_parquet_sequential
 
 def write_new_nifti_files(full_data_parquet, 
                           logger, 
