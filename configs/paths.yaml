@@ -4,6 +4,9 @@ nifti_dir: /data/rbg/scratch/lung_ct/nlst_nifti
 nifti_transformed_dir: /data/rbg/scratch/lung_ct/nlst_nifti_transformed
 parquet_dir: /data/rbg/users/duitz/CT-generative-pred/metadata
 registration_dir: /data/rbg/scratch/lung_ct/registration_zack
+encoded_dir_2d: /data/rbg/scratch/nlst_final_encoded/2d
+encoded_dir_3d: /data/rbg/scratch/nlst_final_encoded/3d
+vae_3d_checkpoint_path: placeholder_for_3d_vae_checkpoint_path.pt
 
 metadata_dir: /data/rbg/users/duitz/CT-generative-pred/metadata
 

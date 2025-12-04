@@ -1,0 +1,33 @@
+# configs/vae_3d_model.yaml
+
+# --- Attention configs ---
+attn_params:
+  num_heads: 4
+  dim_head: 32
+  dropout: 0.1
+  window_size: [4, 8, 8] # null for global attention
+  use_rel_pos_bias: true
+
+use_attn: false
+
+# --- Activation ---
+# Options for Gelu are { approximate: none | tanh | erf }
+act:
+  - GELU
+  - { approximate: none }
+
+# --- CustomVAE core params ---
+vae_latent_channels: 4
+debug_mode: false
+upsample_mode: pixelshuffle
+init_filters: 8
+beta: 1.0
+vae_use_log_var: true
+
+blocks_down: [1, 2, 4]
+blocks_up: [1, 1]
+
+# Other configs
+num_groups: 8
+in_channels: 1
+dropout_prob: null

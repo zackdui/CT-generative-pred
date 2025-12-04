@@ -1,7 +1,8 @@
 # Read me title
 
 Info
-
+mamba env create -f environment.yml
+mamba env update -n sybil2_expand -f environment.yml
 ## Middle Title
 
 ## Acknowledgments

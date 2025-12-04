@@ -40,4 +40,8 @@ logs/
 .DS_Store
 Thumbs.db
 
+# Custom Extra folders
+saved_old_files/
+test_data/
+
 
