@@ -43,5 +43,6 @@ Thumbs.db
 # Custom Extra folders
 saved_old_files/
 test_data/
+scripts/tester_script.py
 
 

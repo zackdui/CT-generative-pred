@@ -395,10 +395,8 @@ def ants_crop_or_pad_like_torchio(img: ants.ANTsImage,
     origin = np.array(img.origin)
     spacing = np.array(img.spacing)
 
-    # direction is a flat list; reshape to matrix (2x2 or 3x3)
+    # direction is a matrix of size (2x2 or 3x3)
     direction = np.array(img.direction)
-    side = int(np.sqrt(len(direction)))
-    direction = direction.reshape((side, side))
 
     # Cropping removes voxels from the "lower" side -> origin moves forward
     physical_shift_crop = spacing * crop_lower

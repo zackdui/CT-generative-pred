@@ -1,10 +1,30 @@
 # This file is used to write nifti files, registrations matrices and update parquet files accordingly.
 import json
+import torch
+import os
 
 from CTFM.utils.config import load_config
 from CTFM.utils.custom_loggers import RegistrationLogger, merge_log_into_parquet_sequential
 from CTFM.data.processing import write_new_nifti_files, write_registration_matrices
 
+
+def save_bad_exams_to_pt(json_path:str):
+    exam_ids = []
+    pids = []
+    with open(json_path, "r") as f:
+        for line in f:
+            if not line.strip():
+                continue
+            record = json.loads(line)
+            exam_ids.append(str(record["exam_id"]))
+            pids.append(str(record["pid"]))
+    data = {
+        "exam_ids": exam_ids,
+        "pids": pids,
+    }
+    dir = os.path.dirname(json_path)
+    output_path = os.path.join(dir, "bad_registration_exams.pt")
+    torch.save(data, output_path)
 
 if __name__ == "__main__":
     # Variables
@@ -16,6 +36,7 @@ if __name__ == "__main__":
     registration_log_path = "/data/rbg/users/duitz/CT-generative-pred/metadata/train/registration_logv3.jsonl"
     updated_output_parquet = "/data/rbg/users/duitz/CT-generative-pred/metadata/train/full_data_single_timepoints_updated.parquet"
     bad_registration_log = "/data/rbg/users/duitz/CT-generative-pred/metadata/train/bad_registration_exams.jsonl"
+    save_bad_exams = False
 
     # Config loading
     path_yaml = "configs/paths.yaml"
@@ -61,6 +82,9 @@ if __name__ == "__main__":
             output_parquet=updated_output_parquet,
         )
         print("Finished merging registration log into parquet.")
+    
+    if save_bad_exams:
+        save_bad_exams_to_pt(bad_registration_log)
 
     
 

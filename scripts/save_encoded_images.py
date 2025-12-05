@@ -1,8 +1,10 @@
 # save_encoded_images.py
 import os
+
+from vae3d2d import CustomVAE
+
 from CTFM.data.cache_encoded import encode_and_cache, consolidate_indices
 from CTFM.models.auto_encoder_2d import AutoEncoder_Lightning
-from vae3d2d import CustomVAE
 from CTFM.utils.config import load_config
 
 def run_encode(dataset_parquet: str, 

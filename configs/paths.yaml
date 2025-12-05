@@ -7,6 +7,7 @@ registration_dir: /data/rbg/scratch/lung_ct/registration_zack
 encoded_dir_2d: /data/rbg/scratch/nlst_final_encoded/2d
 encoded_dir_3d: /data/rbg/scratch/nlst_final_encoded/3d
 vae_3d_checkpoint_path: placeholder_for_3d_vae_checkpoint_path.pt
+nodule_tracked_file: /data/rbg/users/pgmikhael/current/SybilX/notebooks/NLSTNodules/pid2tracked_nodules.p
 
 metadata_dir: /data/rbg/users/duitz/CT-generative-pred/metadata
 
