@@ -8,8 +8,8 @@ import torch
 sys.path.insert(0, "/data/rbg/users/duitz/VAE3d/src")
 from vae3d2d import CustomVAE, AttnParams, training_3D, setup_logger
 
-from CTFM.utils.config import load_config, OPTIMIZERS
-from CTFM.data.datasets.CT_orig_data import CTOrigDataset3D, RepeatedImageDataset
+from CTFM.utils import load_config, OPTIMIZERS
+from CTFM.data import CTOrigDataset3D, RepeatedImageDataset
 
 def setup_model_and_train(encoder_3d_configs, training_3d_configs, base_dataset):
     act = tuple(encoder_3d_configs.act)

@@ -61,13 +61,12 @@ CT-generative-pred/
 │       │   │   ├── CT_orig_data.py
 │       │   │   ├── cached_tensors_data.py
 │       │   │   ├── nlst_base.py
-│       │   │   ├── cache_encoded.py
-│       │   │   ├── create_parquets.py
-│       │   │   ├── flatten_nodules.py
-│       │   │   ├── initial_exam_to_nifti.py
-│       │   │   ├── processing.py
-│       │   │   └── utils.py
-│       │   │
+│       │   ├── cache_encoded.py
+│       │   ├── create_parquets.py
+│       │   ├── flatten_nodules.py
+│       │   ├── initial_exam_to_nifti.py
+│       │   ├── processing.py
+│       │   ├── utils.py
 │       │   └── __init__.py
 │       │
 │       ├── models/

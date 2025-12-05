@@ -1,5 +1,5 @@
 # This file will take the nodule pickle file and convert it to parquet for easier handling
-from CTFM.data.flatten_nodules import pickle_to_parquet
+from CTFM.data import pickle_to_parquet
 
 
 if __name__ == "__main__":

@@ -3,9 +3,8 @@ import json
 import torch
 import os
 
-from CTFM.utils.config import load_config
-from CTFM.utils.custom_loggers import RegistrationLogger, merge_log_into_parquet_sequential
-from CTFM.data.processing import write_new_nifti_files, write_registration_matrices
+from CTFM.utils import RegistrationLogger, merge_log_into_parquet_sequential, load_config
+from CTFM.data import write_new_nifti_files, write_registration_matrices
 
 
 def save_bad_exams_to_pt(json_path:str):
