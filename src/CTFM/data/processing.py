@@ -15,9 +15,10 @@ from pathlib import Path
 
 import json
 
-from .utils import pydicom_to_nifti, ants_crop_or_pad_like_torchio, nib_to_ants
-from CTFM.utils.config import load_config
-from CTFM.utils.custom_loggers import RegistrationLogger, merge_log_into_parquet_sequential
+from .utils import (pydicom_to_nifti, 
+                    nib_to_ants, 
+                    apply_transforms, 
+                    get_ants_image_from_row)
 
 def _log_skip(jsonl_path, exam_id, pid, error=None):
     """"
@@ -46,13 +47,6 @@ def _load_jsonl_to_lists(jsonl_path):
             exam_ids.append(str(record["exam_id"]))
             pids.append(str(record["pid"]))
     return exam_ids, pids
-
-def _save_id_lists_pt(path, exam_ids, pids):
-    data = {
-        "exam_ids": exam_ids,
-        "pids": pids,
-    }
-    torch.save(data, path)
 
 def write_new_nifti_files(full_data_parquet, 
                           logger, 
@@ -184,6 +178,8 @@ def write_registration_matrices(single_patient_parquet,
 
     # make sure boolean columns are actually boolean
     df_all_data["registration_exists"] = df_all_data["registration_exists"].fillna(False)
+    # Set has_nifti to boolean
+    df_all_data["has_nifti"] = df_all_data["has_nifti"].fillna(False).astype("boolean")
     index_map = {eid: i for i, eid in enumerate(df_all_data["exam_id"])}
 
     for index, row in df_single_patient.iterrows():
@@ -334,7 +330,7 @@ def write_registration_matrices(single_patient_parquet,
             rigid = ants.registration(fixed_img, moving_img, type_of_transform="Rigid")
             forward_path = os.path.join(matrix_output_dir, f"forward_f{fixed_exam_id}_m{exam_id}.mat")
             fwd_tmp = rigid["fwdtransforms"][0]
-            shutil.move(rigid["fwdtransforms"][0], forward_path)
+            
             if not os.path.exists(fwd_tmp):
                 print(
                     f"SKIP_BAD_TRANSFORM pid={full_data_exam_row['pid']} "
@@ -424,3 +420,52 @@ def build_dummy_fixed(row):
     )
     return dummy
 
+def save_transformed_nifti_files(exam_id_list: list[str],
+                                full_data_parquet: str,
+                                output_dir: str = "/data/rbg/scratch/lung_ct/nlst_nifti_transformed",
+                                saved_transforms: dict[str, str] = None,
+                                resampling: bool = True,
+                                resampling_params: tuple = (0.703125 ,0.703125, 2.5),
+                                crop_pad: bool = False,
+                                pad_value: int = -1400,
+                                target_size: tuple = (512, 512, 208)):
+    """
+    This function saves transformed NIfTI files for a list of exam IDs based on the registration
+    information stored in a parquet file. It applies the saved transformations to the original
+    NIfTI images and saves the resulting transformed images to a specified output directory.
+    It returns a list of exam IDs for which the transformed NIfTI files were successfully saved
+    """
+    total_images_wrote = 0
+    exam_ids_wrote = []
+    df = pd.read_parquet(full_data_parquet)
+    exam_to_index = {eid: i for i, eid in enumerate(df["exam_id"])}
+    if saved_transforms is None:
+        saved_transforms = {}
+    for exam_id in exam_id_list:
+        index = exam_to_index[exam_id]
+        row = df.iloc[index]
+        if exam_id in saved_transforms:
+            continue
+        # Process the row and save the transformed NIfTI file
+        ants_image = get_ants_image_from_row(row)
+        forward_transform = row["registration_file"]
+        if pd.isna(forward_transform):
+            forward_transform = None
+        ants_transformed_image = apply_transforms(ants_image,
+                                                    forward_transform=forward_transform,
+                                                    row=row,
+                                                    resampling=resampling, 
+                                                    resampling_params=resampling_params, 
+                                                    crop_pad=crop_pad, 
+                                                    target_size=target_size,
+                                                    pad_hu=pad_value,
+                                                    only_xy=False)
+    
+        transformed_nifti_path = os.path.join(output_dir, f"transformed_{exam_id}.nii.gz")
+
+        ants.image_write(ants_transformed_image, transformed_nifti_path)
+        total_images_wrote += 1
+        exam_ids_wrote.append(exam_id)
+
+    print(f"Total transformed NIfTI images wrote: {total_images_wrote}")
+    return exam_ids_wrote
