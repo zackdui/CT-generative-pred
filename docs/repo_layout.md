@@ -1,4 +1,5 @@
-This is the full layout of this git repo.
+This is the full layout of this git repo. Also contains files that should be created when
+running the code in the repo.
 
 ---
 
@@ -6,63 +7,82 @@ This is the full layout of this git repo.
 
 ```text
 CT-generative-pred/
-├── pyproject.toml 
-├── environment.yaml
-├── environment-no-build.yaml          
+├── pyproject.toml
+├── environment.yml
+├── environment_no_build.yml
 ├── README.md
+├── TODO.md
 ├── AUTHORS.md
-├── LICENSE                  
+├── LICENSE
 ├── .gitignore
-├── configs/                  # YAML or JSON configs for experiments
+│
+├── configs/
 │   ├── nlst_large.yaml
 │   ├── nlst_small.yaml
-│   └── paths.yaml
-├── scripts/                  # CLI entrypoints / experiment scripts
-│   ├── train_ct_ae.py
-│   ├── train_classifier.py
-│   ├── eval_ct_ae.py
-│   └── inspect_dataset.py
-├── src/
-│   └── CTFM/         # importable as `import your_project`
-│       ├── __init__.py
-│       ├── data/
-│       │   ├── create_parquets.py       # Create all the metadata files for easy loading
-│       │   ├── datasets.py       # PyTorch Dataset & DataLoader wrappers
-│       │   ├── transforms.py     # augmentations, TorchIO pipelines, etc.
-│       │   └── utils.py          # small helpers for data paths, splits
-│       ├── models/
-│       │   ├── unet.py
-│       │   ├── autoencoder.py
-│       │   ├── diffusion.py
-│       │   └── __init__.py       # convenient exports
-│       ├── training/
-│       │   ├── trainer.py        # training loop / LightningModule / etc.
-│       │   ├── callbacks.py      # checkpointing, early stopping, logging
-│       │   └── optimizers.py     # schedulers, custom optimizers
-│       ├── evaluation/
-│       │   ├── metrics.py        # metrics: dice, SSIM, AUROC, etc.
-│       │   └── eval_loops.py     # evaluation pipelines / scripts
-│       ├── utils/
-│       │   ├── registration_logging.py        # Save registration logs to update parquet files
-│       │   ├── config.py         # config loading 
-│       │   ├── __init__.py
-│       │   ├── plot_lr.py
-│       │   ├── pixel_conversions.py
-│       │   └── data_size.py
-│       └── cli.py                # optional: a unified CLI (typer/click)
-├── notebooks/                # Jupyter exploratory stuff (not core logic)
-│   └── 01_data_exploration.ipynb
-├── tests/                    # unit / integration tests (pytest)
-│   ├── test_datasets.py
-│   ├── test_models.py
-│   └── test_training_loop.py
-├── data/                     # local data mount, kept out of git
-│   └── (empty, gitignored)
-├── metadata/                     # local data mount, kept out of git
-│   └── (empty, gitignored)
-├── docs/                     # Extra documention and information
+│   ├── paths.yaml
+│   ├── train_vae_3d.yaml
+│   ├── unet_2d_cfm.yaml
+│   └── vae_3d_model.yaml
+│
+├── metadata/
+│   ├── train/                # (.gitignored) This is built locally when running create_parquets script
+│       ├── nlst_full.parquet
+│       ├── full_data_single_timepoints.parquet
+│       ├── full_data_timelines.parquet
+│       └── full_data_paired_exams.parquet
+│   ├── val/              # Same structure as train also (.gitignored)
+│   ├── test/             # Same structure as train also (.gitignored)
+│   ├── nlst_nodule_tracking.parquet
+│   └── zack_exam_to_nifti.pkl
+│
+├── docs/
+│   ├── parquets_explanations.md
 │   ├── process.md
 │   └── repo_layout.md
+│
+├── scripts/
+│   ├── eval_2D_fm.py
+│   ├── nodules_pt_to_parquet.py
+│   ├── pretraining_2D_fm.py
+│   ├── pretraining_3D_fm.py
+│   ├── run_create_parquets.py
+│   ├── save_encoded_images.py
+│   ├── save_registrations.py
+│   ├── train_pairs_2D_fm.py
+│   ├── train_pairs_3D_fm.py
+│   └── train_vae_3d.py
+│
+└── src/
+│   └── CTFM/
+│       ├── __init__.py
+│       │
+│       ├── data/
+│       │   ├── datasets/
+│       │   │   ├── CT_orig_data.py
+│       │   │   ├── cached_tensors_data.py
+│       │   │   ├── nlst_base.py
+│       │   │   ├── cache_encoded.py
+│       │   │   ├── create_parquets.py
+│       │   │   ├── flatten_nodules.py
+│       │   │   ├── initial_exam_to_nifti.py
+│       │   │   ├── processing.py
+│       │   │   └── utils.py
+│       │   │
+│       │   └── __init__.py
+│       │
+│       ├── models/
+│       │   └── unet_2d/
+│       │       ├── __init__.py
+│       │       ├── auto_encoder_2d.py
+│       │       └── lightning_2d_cfm.py
+│       │
+│       └── utils/
+│           ├── __init__.py
+│           ├── config.py
+│           ├── custom_loggers.py
+│           ├── data_size.py
+│           ├── pixel_conversions.py
+│           └── plot_lr.py
 └── experiments/              # logs, checkpoints, outputs (gitignored)
     ├── runs/
     └── debug/
@@ -84,7 +104,6 @@ CT-generative-pred/
 
   * `src/your_project/...` contains reusable stuff.
   * `scripts/` calls into that library with configs / CLI args.
-  * This keeps your training logic reusable across experiments.
 
 * **Configs instead of hardcoding**
 
@@ -93,22 +112,5 @@ CT-generative-pred/
     * model hyperparams (channels, depths, etc.)
     * data paths
     * training params (lr, epochs, batch size)
-  * Scripts read a config path:
 
-    ```bash
-    python scripts/train_ct_ae.py --config configs/experiment_01.yaml
-    ```
-
-* **Keep big/volatile stuff out of Git**
-
-  * Add to `.gitignore`:
-
-    * `data/`
-    * `experiments/` or `runs/`
-    * `.venv/`, `__pycache__/`, `.ipynb_checkpoints/`
-    * large temp artifacts
-
-* **Tests live separately**
-
-  * Even a few small tests for datasets and models can save you from silent bugs.
 
