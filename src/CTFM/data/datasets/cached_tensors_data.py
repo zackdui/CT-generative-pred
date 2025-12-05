@@ -320,6 +320,9 @@ class Encoded2DSlicePairsDataset(Dataset):
       max_length: optional max number of (pair, slice) items (truncate)
       predicate_pairs: optional filter on the *pairs* rows (row -> bool)
       seed: if you later want to do random subsampling
+      per_exam_k: keep K random slices per exam pair
+      global_n: keep N random (pair, slice) items globally
+        Only one of per_exam_k or global_n can be set. If both are None, keep all slices.
     """
     def __init__(
         self,
@@ -332,6 +335,8 @@ class Encoded2DSlicePairsDataset(Dataset):
         max_length: Optional[int] = None,
         predicate_pairs: Optional[Callable[[pd.Series], bool]] = None,
         seed: Optional[int] = 42,
+        per_exam_k: Optional[int] = None,
+        global_n: Optional[int] = None,
     ):
         self.full_df = pd.read_parquet(full_data_parquet)
         self.index_df = pd.read_parquet(encoded_index_parquet)
@@ -367,6 +372,8 @@ class Encoded2DSlicePairsDataset(Dataset):
             self.exam_to_slices[exam_id] = df_e
 
         # Build a flat list of (pair_idx, rel_slice_idx) for the dataset
+        assert not (per_exam_k is not None and global_n is not None), "Choose only one of per_exam_k or global_n."
+        r = _rng(seed)
         items: List[Tuple[int, int]] = []
         for pair_idx, pair_row in self.pairs_df.iterrows():
             a = pair_row["exam_id_a"]
@@ -377,9 +384,16 @@ class Encoded2DSlicePairsDataset(Dataset):
             df_b = self.exam_to_slices[b]
             assert len(df_a) == len(df_b), f"Exam pair {a}, {b} have different slice counts!"
             n = min(len(df_a), len(df_b))
-            for s in range(n):
-                items.append((pair_idx, s))
-
+            if per_exam_k is not None:       
+                take = np.sort(r.choice(n, size=int(per_exam_k), replace=False))
+                for s in take:
+                    items.append((pair_idx, s))
+            else:
+                for s in range(n):
+                    items.append((pair_idx, s))
+        if global_n is not None and global_n < len(items):
+            take = np.sort(r.choice(len(items), size=int(global_n), replace=False))
+            items = [items[i] for i in take]
         # Optional truncation
         if max_length is not None and max_length < len(items):
             items = items[:max_length]

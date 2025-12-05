@@ -285,27 +285,6 @@ class DicomLoader:
 def get_sample_loader(split_group, args):
     return DicomLoader(args)
 
-def save_mapping_from_exams_to_nifti(output_path="zack_exam_to_nifti.pkl"):
-    """
-    Create and save a mapping from exam IDs to NIfTI file paths.
-    The mapping is saved as a pickle file at the specified output path.
-    """
-    nifti_files = {}
-    for nifti_file in os.listdir("/data/rbg/scratch/lung_ct/nlst_nifti/"):
-        if any(k in nifti_file for k in ["T0", "T1", "T2"]):
-            _, pid, tp, series = nifti_file.split("_")
-            series = series.split(".nii.gz")[0]
-            exam = f"{pid}{tp}{series.split('.')[-1][:5]}{series.split('.')[-1][:5]}"
-        else:
-            exam = nifti_file.split("_")[1].split(".")[0]
-        exam = exam[:17] if len(exam) > 17 else exam
-        nifti_files[exam] = os.path.join(
-            "/data/rbg/scratch/lung_ct/nlst_nifti/", nifti_file
-        )
-
-    with open(output_path, "wb") as f:
-        pickle.dump(nifti_files, f, protocol=pickle.HIGHEST_PROTOCOL)
-
 def get_exam_id(exam_dict):
     """
     Given an exam dictionary, compute and return the exam ID.
@@ -558,6 +537,20 @@ def ants_to_normalized_tensor(ants_img: ants.ANTsImage, clip_window: Tuple[int, 
     image_tensor = torch.clamp(image_tensor, clip_window[0], clip_window[1])
     image_tensor = 2 * (image_tensor - clip_window[0]) / (clip_window[1] - clip_window[0]) - 1
     return image_tensor
+
+def reverse_normalize(tensor: torch.FloatTensor, clip_window: Tuple[int, int]) -> torch.FloatTensor:
+    """
+    Reverse the normalization of a tensor from [-1, 1] back to original HU values.
+
+    Args:
+        tensor: torch.FloatTensor with values in [-1, 1]
+        clip_window: Tuple[int, int] defining the original clipping window (min, max)
+    
+    Returns:
+        torch.FloatTensor with original HU values
+    """
+    hu_tensor = 0.5 * (tensor + 1) * (clip_window[1] - clip_window[0]) + clip_window[0]
+    return hu_tensor
 
 def collate_image_meta(batch):
     """

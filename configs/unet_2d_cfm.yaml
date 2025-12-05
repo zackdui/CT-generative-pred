@@ -1,0 +1,11 @@
+# ---- model hyperparameters (UNet) ----
+image_size: 64              # 512 for original images
+in_channels: 4              # 1 for original grayscale images
+out_channels: 4             # same as in_channels
+model_channels: 128         # 64 maybe # base num channels (like init_filters)
+channel_mult: [1, 2, 2, 2]  # (1, 2, 4, 8)
+num_res_blocks: 3           # 2 maybe
+attention_resolutions: [16] # [32, 16] maybe
+use_fp16: false
+use_checkpoint: true
+

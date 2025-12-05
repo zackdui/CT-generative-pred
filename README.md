@@ -1,9 +1,42 @@
-# Read me title
+# Temporal CT Generation and Progression Modeling with Latent Flow Matching
 
-Info
+## Setup Environment
+To set up the environment, run:
+
+```bash
 mamba env create -f environment.yml
-mamba env update -n sybil2_expand -f environment.yml
-## Middle Title
+```
+To update the environment after changes to `environment.yml`, run:
+
+```bash
+mamba env update -n ct_venv -f environment.yml
+```
+If you don't have cuda installed or are not on a linux system you can build without cuda support by running:
+
+```bash
+mamba env create -f environment_no_build.yml
+```
+
+## Loading Data
+
+In docs process.md will give the full overview of the data loading process. Here is a brief summary of the process and parquet files used for loading data.
+
+## Parquet Files Overview (Most of these are created when running the data construction scripts)
+
+### Note exact names of parquet files may vary slightly
+
+- **all_exams.parquet** – One row per exam, raw data.
+- **single_timepoints.parquet** – One row per exam, cleaned data with only one exam at each timepoint
+- **patient_timelines.parquet** – One row per patient with all their exams
+- **paired_exams.parquet** – One row per consecutive exams
+- **nlst_nodule_tracking.parquet** – Nodule tracking information. One nodule per row.
+
+
+## Workflow
+
+
+### Notes for Zack
+The path to all the encoded data is: /data/rbg/scratch/nlst_encoded/train5
 
 ## Acknowledgments
 

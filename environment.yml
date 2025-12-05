@@ -1,4 +1,4 @@
-name: sybil2_expand
+name: ct_venv
 channels:
   - pytorch
   - defaults
@@ -329,4 +329,4 @@ dependencies:
       - wrapt==1.17.3
       - wurlitzer==3.1.1
       - yarl==1.22.0
-prefix: /data/rbg/users/duitz/miniforge3/envs/sybil2_expand
+prefix: /data/rbg/users/duitz/miniforge3/envs/ct_venv

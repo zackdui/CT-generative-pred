@@ -1,7 +1,11 @@
 # encode_latents_main.py
 import os
+import sys
 from CTFM.data.cache_encoded import encode_and_cache, consolidate_indices
 from CTFM.models.auto_encoder_2d import AutoEncoder_Lightning
+
+# For local use of vae3d2d module
+sys.path.insert(0, "/data/rbg/users/duitz/VAE3d/src")
 from vae3d2d import CustomVAE, AttnParams, training_3D
 from CTFM.utils.config import load_config, OPTIMIZERS
 

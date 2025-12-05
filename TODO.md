@@ -19,6 +19,8 @@
 ## Model
 - [ ] Fix config file for model hyperparams
 - [ ] Fix config file for model training 3d
+- [ ] If now it is needed because of HU values finetune the 2D VAE on HU value images
+- [ ] Add 3D unet model for flow matching
 
 ---
 
@@ -82,7 +84,7 @@
  - [ ] Did the exams have pixel resampling done? registration?
  - [ ] How should I compare nodules in this case from my generated to the original?
  - [ ] What are the units of volume
-
+ - [ ] What default should I use for clipping during training of HU values
 
 For benny: 'volume': 106.787109375, 'exam': '20808922492012730', Patient ID: 208089
 Only tracked nodule in this exam

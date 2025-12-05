@@ -24,7 +24,7 @@ class _ImageCache:
         self._open: OrderedDict[str, torch.Tensor] = OrderedDict()
 
     def get_image(self, exam_id: str) -> torch.Tensor:
-        if exam_id in self.open():
+        if exam_id in self._open:
             return self._open[exam_id]
         else:
             return None
@@ -49,9 +49,8 @@ class CTOrigDataset2D(Dataset):
                  slices_per_scan: int = 5, # Only for random mode # Must be less then min number of slices in any scan
                  crop_pad: bool = True, 
                  image_size: Tuple[int, int] = (512, 512),
-                 pad_value: int = -1350,
                  resample: bool = True,
-                 resample_size: Tuple[int, int] = (1, 1),
+                 resample_size: Tuple[int, int] = (0.703125 ,0.703125, 2.5),
                  clip_window: Tuple[int, int] = (-1000, 400),
                  max_cache_size: int = 1000,
                  max_length: Optional[int] = None):
@@ -69,7 +68,6 @@ class CTOrigDataset2D(Dataset):
         slices_per_scan: Number of slices to sample per scan in random mode.
         crop_pad: Whether to crop/pad the images to the target size.
         image_size: Target (X, Y) size for the images.
-        pad_value: HU value to use for padding.
         resample: Whether to resample the images before applying transforms.
         resample_size: Voxel size (X, Y) to resample to.
         clip_window: HU window (min, max) for normalization.
@@ -97,7 +95,8 @@ class CTOrigDataset2D(Dataset):
         self.apply_encoder = apply_encoder
         self.device = device
         self.encoder = encoder
-        self.encoder = self.encoder.to(self.device)
+        if encoder is not None:
+            self.encoder = self.encoder.to(self.device)
         self.saved_transforms = saved_transforms if saved_transforms is not None else dict()
         assert mode in ['single', 'pair'], "mode must be 'single' or 'pair'"
         assert slice_mode in ['random', 'all'], "slice_mode must be 'random' or 'all'"
@@ -106,7 +105,7 @@ class CTOrigDataset2D(Dataset):
         self.slices_per_scan = slices_per_scan
         self.crop_pad = crop_pad
         self.image_size = image_size
-        self.pad_value = pad_value
+        self.pad_value = clip_window[0]
         self.resample = resample
         self.resample_size = resample_size
         self.clip_window = clip_window
@@ -267,7 +266,6 @@ class CTOrigDataset3D(Dataset):
                  mode: str = 'single', # Also pair mode
                  crop_pad: bool = True, 
                  image_size: Tuple[int, int, int] = (512, 512, 208),
-                 pad_value: int = -1350,
                  resample: bool = True,
                  resample_size: Tuple[int, int, int] = (1, 1, 1),
                  clip_window: Tuple[int, int] = (-1000, 400),
@@ -285,7 +283,6 @@ class CTOrigDataset3D(Dataset):
         mode: 'single' for single scan mode, 'pair' for scan pair mode.
         crop_pad: Whether to crop/pad the images to the target size.
         image_size: Target (X, Y, Z) size for the images.
-        pad_value: HU value to use for padding.
         resample: Whether to resample the images before applying transforms.
         resample_size: Voxel size (X, Y, Z) to resample to.
         clip_window: HU window (min, max) for normalization.
@@ -312,13 +309,14 @@ class CTOrigDataset3D(Dataset):
         self.apply_encoder = apply_encoder
         self.device = device
         self.encoder = encoder
-        self.encoder = self.encoder.to(self.device)
+        if encoder is not None:
+            self.encoder = self.encoder.to(self.device)
         self.saved_transforms = saved_transforms if saved_transforms is not None else dict()
         assert mode in ['single', 'pair'], "mode must be 'single' or 'pair'"
         self.mode = mode
         self.crop_pad = crop_pad
         self.image_size = image_size
-        self.pad_value = pad_value
+        self.pad_value = clip_window[0]
         self.resample = resample
         self.resample_size = resample_size
         self.clip_window = clip_window
@@ -406,3 +404,14 @@ class CTOrigDataset3D(Dataset):
             # Concatenate the two image tensors along the channel dimension: shape (2, Z, Y, X)
             image_tensor = torch.cat([image_tensor_a, image_tensor_b], dim=0)
             return image_tensor, row
+
+class RepeatedImageDataset(Dataset):
+        def __init__(self, image_tensor, repeat_count):
+            self.image = image_tensor
+            self.repeat_count = repeat_count
+
+        def __len__(self):
+            return self.repeat_count
+
+        def __getitem__(self, idx):
+            return self.image
