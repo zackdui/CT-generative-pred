@@ -1,5 +1,8 @@
 # configs/vae_3d_model.yaml
 
+# Names
+model_name: real_run.pt
+
 # --- Attention configs ---
 attn_params:
   num_heads: 4

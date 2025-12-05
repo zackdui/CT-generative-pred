@@ -1,4 +1,9 @@
 # configs/train_vae_random_parts.yaml
+# Names
+train_wandb_name: real_training
+# This is just a suffix; you’re already building:
+# checkpoint_dir=f"{model_name[:-3]}_checkpoints"
+checkpoint_dir_suffix: "_checkpoints"
 
 # Optimizer
 optimizer_cls: adamw        # This is mapped to torch.optim.AdamW
@@ -7,7 +12,7 @@ optimizer_weight_decay: 0.01
 
 # Training3D core settings
 accum_steps: 4
-patching: random_parts
+patching: random_parts    # null | random_parts | full_volume
 patch_size: [64, 128, 128]
 patches_per_volume: 6
 train_batch: 4
@@ -25,6 +30,4 @@ use_wandb: true
 save_every_steps: 2
 best_check_every_steps: 2
 
-# This is just a suffix; you’re already building:
-# checkpoint_dir=f"{model_name[:-3]}_checkpoints"
-checkpoint_dir_suffix: "_checkpoints"
+

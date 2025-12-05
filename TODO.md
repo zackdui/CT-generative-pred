@@ -1,5 +1,15 @@
 # TODO
 
+## Full Files to write
+- [ ] 3D VAE training script
+- [ ] 3D FM pretraining script
+- [ ] 3D FM paired training script
+- [ ] 2D FM paired script
+- [ ] 2D evaluation script
+- [ ] 3D evaluation script
+- [ ] 2D VAE finetuning script
+- [ ] 3D autencoder eval which also should be worked on in VAE to update to the training script
+
 ## Data
 - [x] Create initial metadata
 - [ ] Check same Z value when loading a pair after processing full volume

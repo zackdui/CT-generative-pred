@@ -267,10 +267,11 @@ class CTOrigDataset3D(Dataset):
                  crop_pad: bool = True, 
                  image_size: Tuple[int, int, int] = (512, 512, 208),
                  resample: bool = True,
-                 resample_size: Tuple[int, int, int] = (1, 1, 1),
+                 resample_size: Tuple[int, int, int] = (0.703125 ,0.703125, 2.5),
                  clip_window: Tuple[int, int] = (-1000, 400),
                  max_cache_size: int = 1000,
-                 max_length: Optional[int] = None):
+                 max_length: Optional[int] = None,
+                 return_meta_data: bool = True):
         """
         parquet_path: Path to the parquet file with the CT scan metadata.
         parquet_pairs_path: Path to the parquet file with the CT scan pairs metadata (only for pair mode).
@@ -288,6 +289,7 @@ class CTOrigDataset3D(Dataset):
         clip_window: HU window (min, max) for normalization.
         max_cache_size: Maximum number of images to keep in the cache.
         max_length: Optional maximum length of the dataset (for debugging).
+        return_meta_data: Whether to return the metadata row along with the image.
 
         Images will be returned as torch Tensors of shape (C, Z, Y, X) where C=1 for single mode and C=2 for pair mode.
         Values will be normalized to the range [-1, 1].
@@ -323,6 +325,7 @@ class CTOrigDataset3D(Dataset):
         self.max_cache_size = max_cache_size
         self.cache = _ImageCache(root=Path(parquet_path).parent, max_open=self.max_cache_size)
         self.max_length = max_length
+        self.return_meta_data = return_meta_data
 
     def __len__(self):
         if self.mode == 'single':
@@ -403,7 +406,9 @@ class CTOrigDataset3D(Dataset):
 
             # Concatenate the two image tensors along the channel dimension: shape (2, Z, Y, X)
             image_tensor = torch.cat([image_tensor_a, image_tensor_b], dim=0)
-            return image_tensor, row
+            if self.return_meta_data:
+                return image_tensor, row
+            return image_tensor
 
 class RepeatedImageDataset(Dataset):
         def __init__(self, image_tensor, repeat_count):
