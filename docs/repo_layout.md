@@ -10,6 +10,7 @@ CT-generative-pred/
 ├── pyproject.toml
 ├── environment.yml
 ├── environment_no_build.yml
+├── requirements.in
 ├── README.md
 ├── TODO.md
 ├── AUTHORS.md

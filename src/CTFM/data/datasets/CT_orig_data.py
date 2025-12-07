@@ -268,7 +268,7 @@ class CTOrigDataset3D(Dataset):
                  image_size: Tuple[int, int, int] = (512, 512, 208),
                  resample: bool = True,
                  resample_size: Tuple[int, int, int] = (0.703125 ,0.703125, 2.5),
-                 clip_window: Tuple[int, int] = (-1000, 400),
+                 clip_window: Tuple[int, int] = (-1500, 400),
                  max_cache_size: int = 1000,
                  max_length: Optional[int] = None,
                  return_meta_data: bool = True):

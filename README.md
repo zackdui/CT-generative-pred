@@ -1,4 +1,4 @@
-# Temporal CT Generation and Progression Modeling with Latent Flow Matching
+# Temporal CT Generation and Progression Modeling with Latent Flow Matching Diffusion
 
 ## Setup Environment
 To set up the environment, run:
