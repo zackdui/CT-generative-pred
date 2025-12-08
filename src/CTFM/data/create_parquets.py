@@ -218,6 +218,7 @@ def paired_exams_parquet(full_data_parquet, output_name: str = "paired_exams.par
 def full_parquet_creation(nlst_data,
                           exam_to_nifti,
                           split_group,
+                          metadata_path,
                           debug: bool = False,):
     """
     This function will create the full data parquet, single timepoint parquet,
@@ -294,6 +295,7 @@ if __name__ == "__main__":
         nlst_data,
         exam_to_nifti,
         split_group,
+        metadata_path=metadata_path,
         debug=True,
     )
     

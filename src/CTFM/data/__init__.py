@@ -1,4 +1,5 @@
 
+from .create_parquets import full_parquet_creation
 from .cache_encoded import encode_and_cache, consolidate_indices
 from .initial_exam_to_nifti import save_mapping_from_exams_to_nifti, save_mapping_transformed_exams_to_nifti
 from .flatten_nodules import pickle_to_parquet
@@ -74,4 +75,5 @@ __all__ = [
     "pickle_to_parquet",
     "write_registration_matrices",
     "save_mapping_transformed_exams_to_nifti",
+    "full_parquet_creation",
 ]
