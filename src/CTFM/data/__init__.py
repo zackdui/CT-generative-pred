@@ -1,6 +1,6 @@
 
 from .cache_encoded import encode_and_cache, consolidate_indices
-from .initial_exam_to_nifti import save_mapping_from_exams_to_nifti
+from .initial_exam_to_nifti import save_mapping_from_exams_to_nifti, save_mapping_transformed_exams_to_nifti
 from .flatten_nodules import pickle_to_parquet
 from .utils import (METAFILE_NOTFOUND_ERR,
                     LOAD_FAIL_MSG,
@@ -73,4 +73,5 @@ __all__ = [
     "NLST_Survival_Dataset",
     "pickle_to_parquet",
     "write_registration_matrices",
+    "save_mapping_transformed_exams_to_nifti",
 ]
