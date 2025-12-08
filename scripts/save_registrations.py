@@ -2,9 +2,10 @@
 import json
 import torch
 import os
+import pandas as pd
 
 from CTFM.utils import RegistrationLogger, merge_log_into_parquet_sequential, load_config
-from CTFM.data import write_new_nifti_files, write_registration_matrices
+from CTFM.data import write_new_nifti_files, write_registration_matrices, save_transformed_nifti_files
 
 
 def save_bad_exams_to_pt(json_path:str):
@@ -36,6 +37,7 @@ if __name__ == "__main__":
     updated_output_parquet = "/data/rbg/users/duitz/CT-generative-pred/metadata/train/full_data_single_timepoints_updated.parquet"
     bad_registration_log = "/data/rbg/users/duitz/CT-generative-pred/metadata/train/bad_registration_exams.jsonl"
     save_bad_exams = False
+    post_registration_write_processed_nifti = False
 
     # Config loading
     path_yaml = "configs/paths.yaml"
@@ -84,6 +86,15 @@ if __name__ == "__main__":
     
     if save_bad_exams:
         save_bad_exams_to_pt(bad_registration_log)
+
+    # Post registration optionally write processed nifti files from parquet with registrations
+    if post_registration_write_processed_nifti:
+        print("Starting writing processed NIFTI files after registration.")
+        df = pd.read_parquet(full_data_parquet)
+        df = df[df['registration_exists'] == True]
+
+        exams_to_write = df['exam_id'].tolist()
+        save_transformed_nifti_files(exams_to_write, full_data_parquet)
 
     
 

@@ -10,7 +10,7 @@ if __name__ == "__main__":
     dataset_config_yaml = "configs/nlst_large.yaml"
     path_yaml = "configs/paths.yaml"
     split_group = "dev"  # "train", "dev", "test"; dev becomes "val"
-    
+    c
     #### Load Configs ####
     args = load_config(dataset_config_yaml)
     base_paths = load_config(path_yaml)

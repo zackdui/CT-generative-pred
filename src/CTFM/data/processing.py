@@ -427,7 +427,7 @@ def save_transformed_nifti_files(exam_id_list: list[str],
                                 resampling: bool = True,
                                 resampling_params: tuple = (0.703125 ,0.703125, 2.5),
                                 crop_pad: bool = False,
-                                pad_value: int = -1400,
+                                pad_value: int = -2000,
                                 target_size: tuple = (512, 512, 208)):
     """
     This function saves transformed NIfTI files for a list of exam IDs based on the registration

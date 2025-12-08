@@ -17,6 +17,14 @@ If you don't have cuda installed or are not on a linux system you can build with
 mamba env create -f environment_no_build.yml
 ```
 
+Next, install the package in editable mode (from the repo root directory where README.md is located):
+
+**Note:** `requirements.in` should be all the top level installed packages.
+
+```bash
+pip install -e .
+```
+
 ## Loading Data
 
 In docs process.md will give the full overview of the data loading process. Here is a brief summary of the process and parquet files used for loading data.

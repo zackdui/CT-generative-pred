@@ -23,9 +23,10 @@ from .utils import (METAFILE_NOTFOUND_ERR,
                     apply_transforms,
                     ants_to_normalized_tensor,
                     reverse_normalize,
-                    collate_image_meta)
+                    collate_image_meta,
+                    compute_dataset_nifti_quantiles)
 
-from .processing import write_new_nifti_files, write_registration_matrices
+from .processing import write_new_nifti_files, write_registration_matrices, save_transformed_nifti_files
 from . import datasets 
 from .datasets.CT_orig_data import CTOrigDataset2D, CTOrigDataset3D, RepeatedImageDataset
 from .datasets.cached_tensors_data import (Encoded2DSliceDataset, 
@@ -76,4 +77,6 @@ __all__ = [
     "write_registration_matrices",
     "save_mapping_transformed_exams_to_nifti",
     "full_parquet_creation",
+    "compute_dataset_nifti_quantiles",
+    "save_transformed_nifti_files",
 ]

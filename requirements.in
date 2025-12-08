@@ -1,0 +1,24 @@
+# Top level requirmenets that were installed via pip
+# Use    pip-compile requirements.in
+# Remove all torch dependencies before compiling to avoid conflicts with different machines
+torch
+pylibjpeg 
+pylibjpeg-libjpeg 
+pylibjpeg-openjpeg 
+gdcm
+numpy
+pandas
+pyarrow
+torchinfo
+torchfm
+lightning
+torchvision
+vae3d2d
+antspyx
+torchio
+pydicom
+nibabel
+diffusers
+matplotlib
+tqdm
+wandb

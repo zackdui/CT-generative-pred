@@ -40,7 +40,7 @@ Each row represents a single exam, with labels, timing information, and pointers
 | `split`                 | `str`                 | Dataset split membership for this exam (`"train"`, `"val"`, `"test"`).                                                                                         | `"train"`                              |
 | `nifti_path`            | `str` or `None`       | Absolute path to the saved NIfTI file for this exam if available (`exam_id` is used in naming).                                                                | `"/data/.../NLST_000123_T1.nii.gz"`    |
 | `has_nifti`             | `bool`                | Whether this exam has a valid NIfTI file (`True` if `exam_id` in `exam_to_nifti` and not in `bad_exams`).                                                      | `True`                                 |
-| `sorted_paths`          | `str` or `None`       | **JSON-encoded list** of DICOM file paths used for this exam when no NIfTI is available. Stored as `json.dumps(list_of_paths)`.                                | `"[""/data/.../IM-0001.dcm"", ...]"`   |
+| `sorted_paths`          | `str` or `None`       | **JSON-encoded list** of DICOM file paths used for this exam when no NIfTI is available. Stored as `json.dumps(list_of_paths)` Return the list with `json.loads(list_of_paths)`.                                | `"[""/data/.../IM-0001.dcm"", ...]"`   |
 
 ---
 

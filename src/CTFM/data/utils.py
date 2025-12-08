@@ -11,6 +11,7 @@ import numpy as np
 import nibabel as nib
 import torchio as tio
 import torch
+from pathlib import Path
 import pickle
 import ants
 import json
@@ -164,6 +165,108 @@ def inspect_with_torchio(path: str) -> None:
     else:
         print("\n[OK] HU range looks reasonable for CT.")
 
+def find_nifti_files(root: str | Path) -> List[Path]:
+    """
+    Recursively find all .nii and .nii.gz files under a root directory.
+    """
+    root = Path(root)
+    nifti_paths = []
+    for dirpath, _, filenames in os.walk(root):
+        for fname in filenames:
+            if fname.endswith(".nii") or fname.endswith(".nii.gz"):
+                nifti_paths.append(Path(dirpath) / fname)
+    return nifti_paths
+
+def compute_dataset_nifti_quantiles(
+    root: str | Path,
+    q_low: float = 0.005,
+    q_high: float = 0.995,
+    max_samples: int = 100,
+    print_every: int = 10,
+) -> Tuple[float, float]:
+    """
+    Scan a directory of NIfTI files and compute dataset-wide
+    low/high HU quantiles by averaging per-file quantiles.
+
+    Parameters
+    ----------
+    root : str or Path
+        Root directory to recursively search for NIfTI files.
+    q_low : float
+        Lower quantile (e.g. 0.005 = 0.5%).
+    q_high : float
+        Upper quantile (e.g. 0.995 = 99.5%).
+    max_samples : int
+        Maximum number of NIfTI files to sample across the dataset.
+    print_every : int
+        Print progress every N files.
+
+    Returns
+    -------
+    lo_global : float
+        Suggested global lower HU clip (average of per-file q_low).
+    hi_global : float
+        Suggested global upper HU clip (average of per-file q_high).
+    """
+    nifti_paths = find_nifti_files(root)
+    if not nifti_paths:
+        raise FileNotFoundError(f"No NIfTI files found under {root}")
+
+    # Optionally subsample if there are many files
+    nifti_paths = nifti_paths[:max_samples]
+
+    q_lows = []
+    q_highs = []
+    global_min = np.inf
+    global_max = -np.inf
+
+    print(f"Found {len(nifti_paths)} NIfTI files to inspect (max_samples={max_samples}).")
+    print(f"Using quantiles: low={q_low}, high={q_high}\n")
+
+    for i, path in enumerate(nifti_paths, start=1):
+        img = nib.load(str(path))
+        # Use scaled HU values (float32 to save memory)
+        data = img.get_fdata(dtype=np.float32)
+
+        # Track global min/max just for info
+        global_min = min(global_min, float(np.min(data)))
+        global_max = max(global_max, float(np.max(data)))
+
+        # Flatten for quantile computation
+        flat = data.reshape(-1)
+        lo = float(np.quantile(flat, q_low))
+        hi = float(np.quantile(flat, q_high))
+
+        q_lows.append(lo)
+        q_highs.append(hi)
+
+        if i % print_every == 0 or i == len(nifti_paths):
+            print(f"[{i}/{len(nifti_paths)}] {path.name}: "
+                  f"q_low={lo:.2f}, q_high={hi:.2f}")
+
+    # Aggregate per-file quantiles
+    lo_global = float(np.mean(q_lows))
+    hi_global = float(np.mean(q_highs))
+
+    print("\n===== DATASET-WIDE SUMMARY =====")
+    print(f"Number of files used   : {len(nifti_paths)}")
+    print(f"Global HU min (raw)    : {global_min:.2f}")
+    print(f"Global HU max (raw)    : {global_max:.2f}")
+    print()
+    print(f"Per-file {q_low*100:.2f}%-quantile:")
+    print(f"  mean = {np.mean(q_lows):.2f}, "
+          f"min = {np.min(q_lows):.2f}, "
+          f"max = {np.max(q_lows):.2f}")
+    print(f"Per-file {q_high*100:.2f}%-quantile:")
+    print(f"  mean = {np.mean(q_highs):.2f}, "
+          f"min = {np.min(q_highs):.2f}, "
+          f"max = {np.max(q_highs):.2f}")
+    print()
+    print("===== SUGGESTED GLOBAL CLIP RANGE =====")
+    print(f"Clip HU to approximately: [{lo_global:.2f}, {hi_global:.2f}]")
+    print()
+
+    return lo_global, hi_global
 
 # Dicom loader with only ToTensor augmentation
 # Additionally all helpers needed to load the dicoms properly in this format
