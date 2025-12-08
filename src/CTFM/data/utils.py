@@ -501,25 +501,26 @@ def apply_transforms(image: ants.ANTsImage,
             use_voxels=False,
             interp_type=1
         )
+    
+    # If it is already aligned because it is the first image, skip transform application
+    if forward_transform is not None:
+        transformed_img = ants.apply_transforms(
+            fixed=dummy_fixed,
+            moving=image,
+            transformlist=[forward_transform],
+            interpolator="linear"
+        )
+    else: # If transform is None
+        transformed_img = image
 
     if crop_pad:
-        image = ants_crop_or_pad_like_torchio(
-            image,
+        transformed_img = ants_crop_or_pad_like_torchio(
+            transformed_img,
             target_size=target_size,
             pad_value=pad_hu,
             only_xy=only_xy,
         )
-    
-    # If it is already aligned because it is the first image, skip transform application
-    if forward_transform is None:
-        return image
-    
-    transformed_img = ants.apply_transforms(
-        fixed=dummy_fixed,
-        moving=image,
-        transformlist=[forward_transform],
-        interpolator="linear"
-    )
+        
     return transformed_img
 
 def ants_to_normalized_tensor(ants_img: ants.ANTsImage, clip_window: Tuple[int, int]) -> torch.FloatTensor:

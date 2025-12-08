@@ -53,7 +53,8 @@ class CTOrigDataset2D(Dataset):
                  resample_size: Tuple[int, int] = (0.703125 ,0.703125, 2.5),
                  clip_window: Tuple[int, int] = (-1000, 400),
                  max_cache_size: int = 1000,
-                 max_length: Optional[int] = None):
+                 max_length: Optional[int] = None,
+                 return_meta_data: bool = True):
         """
         parquet_path: Path to the parquet file with the CT scan metadata.
         parquet_pairs_path: Path to the parquet file with the CT scan pairs metadata (only for pair mode).
@@ -112,6 +113,7 @@ class CTOrigDataset2D(Dataset):
         self.max_cache_size = max_cache_size
         self.cache = _ImageCache(root=Path(parquet_path).parent, max_open=self.max_cache_size)
         self.max_length = max_length
+        self.return_meta_data = return_meta_data
         if self.mode == 'single':
             if self.slice_mode == 'all':
                 total_slices = 0
@@ -222,7 +224,9 @@ class CTOrigDataset2D(Dataset):
             row = self.df.iloc[exam_index]
             image_tensor_slice = self.process_row_single(row, slice_idx)
             row['slice_idx'] = slice_idx
-            return image_tensor_slice, row
+            if self.return_meta_data:
+                return image_tensor_slice, row
+            return image_tensor_slice
         elif self.mode == 'pair':
             row = self.pairs_df.iloc[exam_index]
             exam_id_a = row['exam_id_a']
@@ -252,8 +256,10 @@ class CTOrigDataset2D(Dataset):
             # Concatenate the two image tensors along the channel dimension: shape (2, Y, X)
             image_tensor = torch.cat([image_tensor_slice_a, image_tensor_slice_b], dim=0)
             row['slice_idx'] = slice_idx
-            return image_tensor, row
-        
+            if self.return_meta_data:
+                return image_tensor, row
+            return image_tensor
+
 
 class CTOrigDataset3D(Dataset):
     def __init__(self, 
@@ -377,8 +383,10 @@ class CTOrigDataset3D(Dataset):
 
         if self.mode == 'single':
             row = self.df.iloc[index]
-            image_tensor_slice = self.process_row_single(row)
-            return image_tensor_slice, row
+            image_tensor = self.process_row_single(row)
+            if self.return_meta_data:
+                return image_tensor, row
+            return image_tensor
         elif self.mode == 'pair':
             row = self.pairs_df.iloc[index]
             exam_id_a = row['exam_id_a']
