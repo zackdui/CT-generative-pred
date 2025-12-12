@@ -10,7 +10,7 @@ import json
 # Module imports
 from CTFM.utils.config import load_config
 from .datasets.nlst_base import NLST_Survival_Dataset
-from CTFM.data.utils import fix_repeated_shared, get_exam_id
+from .utils import fix_repeated_shared, get_exam_id, detect_affine_source
 
 
 def create_full_data_parquet(nlst_dataset, 
@@ -44,18 +44,20 @@ def create_full_data_parquet(nlst_dataset,
     for index, sample in enumerate(nlst_dataset):
         new_sample = {}
 
-        exam_id = get_exam_id(sample)
+        exam_id = str(get_exam_id(sample))
         if exam_id in exam_to_nifti.keys() and exam_id not in bad_exams:
             new_sample["nifti_path"] = exam_to_nifti[exam_id]
             new_sample["has_nifti"] = True
             new_sample["sorted_paths"] = None
+            new_sample["nifti_label"] = detect_affine_source(new_sample["nifti_path"], fix_repeated_shared(sample["paths"][0]))
         else:
             sorted_paths = [fix_repeated_shared(p) for p in sample["paths"]]
             new_sample["sorted_paths"] = json.dumps(sorted_paths)
             new_sample["nifti_path"] = None
             new_sample["has_nifti"] = False
+            new_sample["nifti_label"] = None
         
-        # ask chat about storing them and what their type should be for lists and stuff
+        new_sample["first_dicom_path"] = fix_repeated_shared(sample["paths"][0])
         new_sample["cancer"] = int(sample["y"])
         new_sample["exam_id"] = str(exam_id)
         new_sample["exam"] = str(sample["exam"])
@@ -133,6 +135,34 @@ def dedup_timepoints(parquet_path: str, new_file_name: str = "single_timepoints.
     dirpath = os.path.dirname(parquet_path)
     new_path = os.path.join(dirpath, new_file_name)
     out.to_parquet(new_path, index=False)
+    return new_path
+
+def filter_by_nodule_exists(parquet_path: str, nodule_parquet: str, output_name: str = "filtered_by_nodule.parquet") -> str:
+    """
+    This function will filter the given parquet file to only include exams that have nodules
+    according to the provided nodule parquet file.
+
+    Parameters:
+    parquet_path: str
+        The path to the input parquet file.
+    nodule_parquet: str
+        The path to the parquet file containing one line per nodule with exam_IDs with key exam.
+    output_name: str
+        The name of the output filtered parquet file.
+
+    Returns:
+        str: The path to the filtered parquet file.
+    """
+    df_orig = pd.read_parquet(parquet_path)
+    nodule_df = pd.read_parquet(nodule_parquet)
+
+    exams_with_nodules = set(nodule_df["exam"].unique())
+
+    filtered_df = df_orig[df_orig["exam_id"].isin(exams_with_nodules)].reset_index(drop=True)
+
+    dirpath = os.path.dirname(parquet_path)
+    new_path = os.path.join(dirpath, output_name)
+    filtered_df.to_parquet(new_path, index=False)
     return new_path
 
 def write_patient_timelines(in_parquet: str, out_parquet: str = "patient_timelines.parquet") -> str:
@@ -219,6 +249,7 @@ def full_parquet_creation(nlst_data,
                           exam_to_nifti,
                           split_group,
                           metadata_path,
+                          nodule_parquet: str = None,
                           debug: bool = False,):
     """
     This function will create the full data parquet, single timepoint parquet,
@@ -232,6 +263,9 @@ def full_parquet_creation(nlst_data,
         A mapping from exam IDs to nifti file paths.
     split_group: str
         The split group (e.g., 'train', 'val', 'test') for the dataset.
+    nodule_parquet: str or None
+        The path to the nodule parquet file. If provided, the single timepoint parquet
+        will be filtered to only include exams with nodules.
     debug: bool
         If True, print debug information during the process.
     """
@@ -253,6 +287,15 @@ def full_parquet_creation(nlst_data,
     )
     if debug:
         print("Finished Creation of single timepoint parquet.")
+        print("Starting Filtering of single timepoint parquet by nodule existence.")
+    if nodule_parquet is not None:
+        single_timepoint_parquet = filter_by_nodule_exists(
+            single_timepoint_parquet,
+            nodule_parquet,
+            output_name="full_data_single_timepoints_nodule_only.parquet"
+        )
+    if debug:
+        print("Finished Creation of single timepoint by nodule parquet.")
         print("Starting Creation of paired exams parquet.")
     paired_exams_file = paired_exams_parquet(single_timepoint_parquet, output_name="full_data_paired_exams.parquet")
     if debug:

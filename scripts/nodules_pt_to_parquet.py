@@ -1,9 +1,13 @@
 # This file will take the nodule pickle file and convert it to parquet for easier handling
 from CTFM.data import pickle_to_parquet
+from CTFM.utils import load_config
+    
 
 
 if __name__ == "__main__":
-    p_path = "/data/rbg/users/pgmikhael/current/SybilX/notebooks/NLSTNodules/pid2tracked_nodules.p"
-    out_parquet = "/data/rbg/users/duitz/CT-generative-pred/metadata/nlst_nodule_tracking.parquet"
+    path_yaml = "configs/paths.yaml"
+    base_paths = load_config(path_yaml)
+    p_path = base_paths.nodule_tracked_file
+    out_parquet = base_paths.nodule_tracked_parquet
 
     pickle_to_parquet(p_path, out_parquet)
