@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
 import json
+from tqdm import tqdm
 
 # Module imports
 from CTFM.utils.config import load_config
@@ -41,7 +42,7 @@ def create_full_data_parquet(nlst_dataset,
 
     new_parquet = []
 
-    for index, sample in enumerate(nlst_dataset):
+    for index, sample in enumerate(tqdm(nlst_dataset, total=len(nlst_dataset), mininterval=5.0)):
         new_sample = {}
 
         exam_id = str(get_exam_id(sample))
