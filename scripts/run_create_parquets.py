@@ -10,10 +10,11 @@ if __name__ == "__main__":
     dataset_config_yaml = "configs/nlst_large.yaml"
     path_yaml = "configs/paths.yaml"
     split_group = "dev"  # "train", "dev", "test"; dev becomes "val"
-    c
+    
     #### Load Configs ####
     args = load_config(dataset_config_yaml)
     base_paths = load_config(path_yaml)
+    nodule_parquet_path = base_paths.nodule_tracked_parquet
 
     metadata_path = Path(base_paths.metadata_dir)  # / "nlst_large_metadata.csv"
 
@@ -35,5 +36,6 @@ if __name__ == "__main__":
         exam_to_nifti,
         split_group,
         metadata_path=metadata_path,
+        nodule_parquet=nodule_parquet_path,
         debug=True,
     )
