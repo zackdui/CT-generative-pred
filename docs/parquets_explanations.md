@@ -41,6 +41,8 @@ Each row represents a single exam, with labels, timing information, and pointers
 | `nifti_path`            | `str` or `None`       | Absolute path to the saved NIfTI file for this exam if available (`exam_id` is used in naming).                                                                | `"/data/.../NLST_000123_T1.nii.gz"`    |
 | `has_nifti`             | `bool`                | Whether this exam has a valid NIfTI file (`True` if `exam_id` in `exam_to_nifti` and not in `bad_exams`).                                                      | `True`                                 |
 | `sorted_paths`          | `str` or `None`       | **JSON-encoded list** of DICOM file paths used for this exam when no NIfTI is available. Stored as `json.dumps(list_of_paths)` Return the list with `json.loads(list_of_paths)`.                                | `"[""/data/.../IM-0001.dcm"", ...]"`   |
+| `first_dicom_path`      | `str`                 | The path to the first DICOM file in the exam's sorted paths.                                                                                                   | `"/data/.../IM-0001.dcm"`              |
+| `nifti_label`           | `str` or `None`       | "ITK", "NIBABEL_RAW" or "UNKOWN". This is to make sure the nifti was saved in the proper format and used to correct it if not.                                                       | `"ITK"`                                |
 
 ---
 
@@ -90,14 +92,21 @@ This file is the **canonical per-exam table** used for all downstream longitudin
 
 When registration and preprocessing are applied, the following columns are **added** (if not already present):
 
+**note:** They will not be added when a pid only has one timepoint associated with it.
+
 | **Column Name**          | **Type**                               | **Description**                                                                                  | **Example Value**                       |
 | ------------------------ | -------------------------------------- | ------------------------------------------------------------------------------------------------ | --------------------------------------- |
 | `registration_exists`    | `bool`                                 | Whether a successful registration transform exists for this exam. Initialized as `False`.        | `True`                                  |
 | `registration_file`      | `str` or `pd.NA`                       | Path to the registration transform file (e.g., ANTs `.mat` file) if registration exists.         | `"/data/.../forward_fT0_mT1.mat"`       |
+| `reverse_transform`      | `bool` or `pd.NA`                       | Whether or not to reverse the transform. (If True the transform is really moving to fixed)         | `True`                                  |
 | `fixed_shape`            | `object` (e.g. list[int] or `pd.NA`)   | Shape of the **fixed/reference** image used during registration (e.g., `[Z, H, W]`).             | `[208, 512, 512]`                       |
 | `fixed_spacing`          | `object` (e.g. list[float] or `pd.NA`) | Spacing (mm) of the fixed image used for registration.                                           | `[1.0, 1.0, 1.0]`                       |
 | `fixed_origin`           | `object` (e.g. list[float] or `pd.NA`) | Origin of the fixed image in physical coordinates.                                               | `[-128.0, -128.0, -128.0]`              |
 | `fixed_direction`        | `object` (e.g. list[float] or `pd.NA`) | Direction cosines of the fixed image (flattened orientation matrix). 9 dimentional array that frequently must be reshaped to 3 x 3                            | `[1.0, 0.0, 0.0, 0.0, ...]`             |
+| `original_shape`            | `object` (e.g. list[int] or `pd.NA`)   | Shape of the **current** image used during registration (e.g., `[Z, H, W]`).             | `[208, 512, 512]
+| `original_spacing`          | `object` (e.g. list[float] or `pd.NA`) | Spacing (mm) of the current/original image used for registration.                                           | `[1.0, 1.0, 1.0]`                       |
+| `original_origin`           | `object` (e.g. list[float] or `pd.NA`) | Origin of the current/original image in physical coordinates.                                               | `[-128.0, -128.0, -128.0]`              |
+| `original_direction`        | `object` (e.g. list[float] or `pd.NA`) | Direction cosines of the current/original image (flattened orientation matrix). 9 dimentional array that frequently must be reshaped to 3 x 3                            | `[1.0, 0.0, 0.0, 0.0, ...]`             |
 | `transformed_nifti_path` | `str` or `pd.NA`                       | Path to the **registered/resampled** NIfTI volume for this exam, if it has been written to disk. | `"/data/.../NLST_000123_T1_reg.nii.gz"` |
 
 ---
