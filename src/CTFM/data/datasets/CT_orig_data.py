@@ -1,9 +1,8 @@
 
 from torch.utils.data import Dataset
-from typing import Callable, Dict, List, Optional, Tuple
 import pandas as pd
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple, Hashable
 import numpy as np
 import pandas as pd
 import torch
@@ -12,7 +11,7 @@ import pyarrow.dataset as pa_ds
 from collections import OrderedDict
 import ants
 
-from CTFM.data.utils import apply_transforms, get_ants_image_from_row, ants_crop_or_pad_like_torchio, ants_to_normalized_tensor
+from CTFM.data.utils import apply_transforms, get_ants_image_from_row, ants_crop_or_pad_like_torchio, ants_to_normalized_tensor, bbox_padded_coords, pad_ZYX
 
 ########## Caches ##########
 class _ImageCache:
@@ -33,6 +32,28 @@ class _ImageCache:
         self._open[exam_id] = image
         if len(self._open) > self.max_open:
             self._open.popitem(last=False)
+
+class _NoduleLRUCache:
+    """
+    LRU cache for *nodule tensors* (already normalized), keyed by any hashable key.
+    Stores torch.Tensor of shape (1, z, y, x).
+    """
+    def __init__(self, max_items: int = 5000):
+        self.max_items = int(max_items)
+        self._d: "OrderedDict[Hashable, torch.Tensor]" = OrderedDict()
+
+    def get(self, key: Hashable) -> Optional[torch.Tensor]:
+        v = self._d.get(key)
+        if v is None:
+            return None
+        self._d.move_to_end(key)
+        return v
+
+    def put(self, key: Hashable, value: torch.Tensor) -> None:
+        self._d[key] = value
+        self._d.move_to_end(key)
+        while len(self._d) > self.max_items:
+            self._d.popitem(last=False)
 
 ########### Datasets ##########
     
@@ -69,7 +90,7 @@ class CTOrigDataset2D(Dataset):
         slices_per_scan: Number of slices to sample per scan in random mode.
         crop_pad: Whether to crop/pad the images to the target size.
         image_size: Target (X, Y) size for the images.
-        resample: Whether to resample the images before applying transforms.
+        resample: Whether to resample the images after applying transforms.
         resample_size: Voxel size (X, Y) to resample to.
         clip_window: HU window (min, max) for normalization.
         max_cache_size: Maximum number of images to keep in the cache.
@@ -84,7 +105,8 @@ class CTOrigDataset2D(Dataset):
         """
         self.df = pd.read_parquet(parquet_path)
         # Make sure pd.Na will be treated as False where appropriate
-        self.df["registration_exists"] = self.df["registration_exists"].fillna(False)
+        self.df["registration_exists"] = self.df["registration_exists"].fillna(False).astype("boolean")
+        self.df["reverse_transform"] = self.df["reverse_transform"].fillna(False).astype("boolean")
         # Filter to only those with registrations
         self.df = self.df[self.df["registration_exists"] == True].reset_index(drop=True)
         self.df["has_nifti"] = self.df["has_nifti"].fillna(False)
@@ -194,10 +216,13 @@ class CTOrigDataset2D(Dataset):
             cur_image_size = ants_image.shape
             target_size_3d = (self.image_size[0], self.image_size[1], cur_image_size[2])
             forward_transform = row["registration_file"]
+            reverse_transform = row["reverse_transform"]
             if pd.isna(forward_transform):
                 forward_transform = None
+                reverse_transform = None
             ants_transformed_image = apply_transforms(ants_image,
                                                       forward_transform=forward_transform,
+                                                      reverse_transform=reverse_transform,
                                                       row=row,
                                                       resampling=self.resample, 
                                                       resampling_params=self.resample_size, 
@@ -225,7 +250,7 @@ class CTOrigDataset2D(Dataset):
             image_tensor_slice = self.process_row_single(row, slice_idx)
             row['slice_idx'] = slice_idx
             if self.return_meta_data:
-                return image_tensor_slice, row
+                return image_tensor_slice, row.to_dict()
             return image_tensor_slice
         elif self.mode == 'pair':
             row = self.pairs_df.iloc[exam_index]
@@ -257,7 +282,7 @@ class CTOrigDataset2D(Dataset):
             image_tensor = torch.cat([image_tensor_slice_a, image_tensor_slice_b], dim=0)
             row['slice_idx'] = slice_idx
             if self.return_meta_data:
-                return image_tensor, row
+                return image_tensor, row.to_dict()
             return image_tensor
 
 
@@ -290,7 +315,7 @@ class CTOrigDataset3D(Dataset):
         mode: 'single' for single scan mode, 'pair' for scan pair mode.
         crop_pad: Whether to crop/pad the images to the target size.
         image_size: Target (X, Y, Z) size for the images.
-        resample: Whether to resample the images before applying transforms.
+        resample: Whether to resample the images after applying transforms.
         resample_size: Voxel size (X, Y, Z) to resample to.
         clip_window: HU window (min, max) for normalization.
         max_cache_size: Maximum number of images to keep in the cache.
@@ -306,6 +331,7 @@ class CTOrigDataset3D(Dataset):
         self.df = pd.read_parquet(parquet_path)
         # Make sure pd.Na will be treated as False where appropriate
         self.df["registration_exists"] = self.df["registration_exists"].fillna(False)
+        self.df["reverse_transform"] = self.df["reverse_transform"].fillna(False).astype("boolean")
         # Filter to only those with registrations
         self.df = self.df[self.df["registration_exists"] == True].reset_index(drop=True)
         self.df["has_nifti"] = self.df["has_nifti"].fillna(False)
@@ -357,10 +383,13 @@ class CTOrigDataset3D(Dataset):
             ants_image = get_ants_image_from_row(row)
             target_size_3d = self.image_size
             forward_transform = row["registration_file"]
+            reverse_transform = row["reverse_transform"]
             if pd.isna(forward_transform):
                 forward_transform = None
+                reverse_transform = None
             ants_transformed_image = apply_transforms(ants_image,
                                                       forward_transform=forward_transform,
+                                                      reverse_transform=reverse_transform,
                                                       row=row,
                                                       resampling=self.resample, 
                                                       resampling_params=self.resample_size, 
@@ -385,7 +414,7 @@ class CTOrigDataset3D(Dataset):
             row = self.df.iloc[index]
             image_tensor = self.process_row_single(row)
             if self.return_meta_data:
-                return image_tensor, row
+                return image_tensor, row.to_dict()
             return image_tensor
         elif self.mode == 'pair':
             row = self.pairs_df.iloc[index]
@@ -415,9 +444,227 @@ class CTOrigDataset3D(Dataset):
             # Concatenate the two image tensors along the channel dimension: shape (2, Z, Y, X)
             image_tensor = torch.cat([image_tensor_a, image_tensor_b], dim=0)
             if self.return_meta_data:
-                return image_tensor, row
+                return image_tensor, row.to_dict()
             return image_tensor
 
+class CTNoduleDataset3D(Dataset):
+    """
+    Mirrors CTOrigDataset3D but returns *nodule crops* instead of full volumes.
+
+    Outputs:
+      - single mode: torch.Tensor (1, z, y, x) normalized to [-1, 1]
+      - pair mode:   torch.Tensor (2, z, y, x) (A then B), normalized to [-1, 1]
+    """
+
+    def __init__(
+        self,
+        parquet_path: str,
+        nodules_parquet_path: str,
+        nodule_pairs_parquet_path: Optional[str] = None,
+        saved_transforms: Optional[Dict[str, str]] = None,
+        mode: str = "single",  # "single" or "pair"
+        return_meta_data: bool = True,
+        resample: bool = True,
+        resample_size: Tuple[float, float, float] = (0.703125, 0.703125, 2.5),
+        clip_window: Tuple[int, int] = (-1500, 400),
+        force_patch_size: Optional[Tuple[int, int, int]] = None,  # padded or cropped patch size (x,y,z) if specified
+        max_volume_cache_size: int = 1000,
+        max_nodule_cache_size: int = 5000,
+        max_length: Optional[int] = None,
+    ):
+        self.df = pd.read_parquet(parquet_path)
+        self.df["registration_exists"] = self.df["registration_exists"].fillna(False).astype("boolean")
+        self.df["reverse_transform"] = self.df["reverse_transform"].fillna(False).astype("boolean")
+        self.df = self.df[self.df["registration_exists"] == True].reset_index(drop=True)
+        self.df["has_nifti"] = self.df["has_nifti"].fillna(False).astype(bool)
+
+        self.nod_df = pd.read_parquet(nodules_parquet_path).reset_index(drop=True)
+
+        self.pairs_df = None
+        if nodule_pairs_parquet_path is not None:
+            self.pairs_df = pd.read_parquet(nodule_pairs_parquet_path).reset_index(drop=True)
+
+        assert mode in ["single", "pair"], "mode must be 'single' or 'pair'"
+        self.mode = mode
+        if self.mode == "pair":
+            assert self.pairs_df is not None, "nodule_pairs_parquet_path must be provided in pair mode"
+
+        # map exam_id -> index into self.df 
+        self.id_to_index = {row["exam_id"]: idx for idx, row in self.df.iterrows()}
+        self.nod_id_to_index = {f"{row['nodule_group']}_{row['exam']}_{row['exam_idx']}": idx for idx, row in self.nod_df.iterrows()}
+
+        self.saved_transforms = saved_transforms if saved_transforms is not None else dict()
+
+        self.resample = resample
+        self.resample_size = resample_size
+        self.clip_window = clip_window
+        self.pad_value = clip_window[0]
+
+        self.force_patch_size = force_patch_size
+
+        self.return_meta_data = return_meta_data
+        self.max_length = max_length
+
+        # caches
+        self.volume_cache = _ImageCache(root=Path(parquet_path).parent, max_open=int(max_volume_cache_size))
+        self.nodule_cache = _NoduleLRUCache(max_items=int(max_nodule_cache_size))
+
+    def __len__(self) -> int:
+        if self.mode == "single":
+            n = len(self.nod_df)
+        else:
+            n = len(self.pairs_df)
+        return min(n, self.max_length) if self.max_length is not None else n
+
+    def _get_transformed_volume_tensor(self, exam_row) -> torch.Tensor:
+        """
+        Returns normalized tensor (1, Z, Y, X) in the same transformed space
+        as CTOrigDataset3D.
+        """
+        exam_id = exam_row["exam_id"]
+
+        cached = self.volume_cache.get_image(exam_id)
+        if cached is not None:
+            return cached  # (1, Z, Y, X)
+
+        if exam_id in self.saved_transforms:
+            nifti_path = self.saved_transforms[exam_id]
+            ants_transformed = ants.image_read(nifti_path)
+        else:
+            ants_image = get_ants_image_from_row(exam_row)
+            forward_transform = exam_row["registration_file"]
+            reverse_transform = exam_row["reverse_transform"]
+            if forward_transform is None or pd.isna(forward_transform):
+                forward_transform = None
+                reverse_transform = None
+
+            ants_transformed = apply_transforms(
+                ants_image,
+                forward_transform=forward_transform,
+                reverse_transform=reverse_transform,
+                row=exam_row,
+                resampling=self.resample,
+                resampling_params=self.resample_size,
+                crop_pad=False,
+                target_size=None,
+                pad_hu=self.pad_value,
+                only_xy=False,
+            )
+
+        vol = ants_to_normalized_tensor(ants_transformed, clip_window=self.clip_window)
+        assert vol.dim() == 4 and vol.shape[0] == 1, f"Expected (1,Z,Y,X), got {tuple(vol.shape)}"
+        self.volume_cache.add_image(exam_id, vol)
+        return vol
+
+    # ---- Nodule crop logic ----
+    def _crop_nodule_from_volume(self, vol_1zyx: torch.Tensor, bbox, target_shape) -> torch.Tensor:
+        """
+        vol_1zyx: (1, Z, Y, X)
+        bbox: (i_min, i_max, j_min, j_max, k_min, k_max)
+        target_shape: (x, y, z) desired output shape
+        returns (1, z, y, x)
+        """
+        assert vol_1zyx.dim() == 4 and vol_1zyx.shape[0] == 1
+        _, Z, Y, X = vol_1zyx.shape
+        updated_bbox, padding = bbox_padded_coords(bbox, (X, Y, Z), target_shape)
+
+        if (updated_bbox[0] > updated_bbox[1]) or (updated_bbox[2] > updated_bbox[3]) or (updated_bbox[4] > updated_bbox[5]):
+            raise ValueError(f"Degenerate bbox after clipping: {bbox} for volume shape (Z,Y,X)=({Z},{Y},{X})")
+        
+        i_min, i_max, j_min, j_max, k_min, k_max = updated_bbox
+        # slice order: (1, Z, Y, X) -> k is Z, j is X, i is Y
+        patch = vol_1zyx[
+            :,
+            k_min:k_max + 1,
+            i_min:i_max + 1,
+            j_min:j_max + 1,
+        ]
+        padded_patch = pad_ZYX(patch.squeeze(), padding, pad_value= -1.0)
+        padded_patch = padded_patch.unsqueeze(0)  # (1, z, y, x)
+        
+        return padded_patch
+
+    def _process_one_nodule(self, nodule_row) -> torch.Tensor:
+        """
+        Returns (1, z, y, x) normalized.
+        """
+        # Build a stable cache key.
+        # Prefer nodule_id if present; else use the row index + bbox coords.
+        nodule_group = nodule_row["nodule_group"]
+        exam_id = nodule_row["exam"]
+        time_index = nodule_row["exam_idx"]
+        nodule_id = f"{nodule_group}_{exam_id}_{time_index}"
+
+        cached = self.nodule_cache.get(nodule_id)
+        if cached is not None:
+            return cached
+        
+        bbox = nodule_row["coords_fixed"]
+
+        # fetch exam metadata row
+        exam_idx = self.id_to_index[exam_id]
+        exam_row = self.df.iloc[exam_idx]
+
+        vol = self._get_transformed_volume_tensor(exam_row)   # (1, Z, Y, X)
+        patch = self._crop_nodule_from_volume(vol, bbox, self.force_patch_size)      # (1, z, y, x)
+
+        self.nodule_cache.put(nodule_id, patch)
+        return patch
+
+    def __getitem__(self, index: int):
+        if self.mode == "single":
+            row = self.nod_df.iloc[index]
+            exam_id = row["exam"]
+            patch = self._process_one_nodule(row)
+
+            exam_idx = self.id_to_index[exam_id]
+            exam_row = self.df.iloc[exam_idx]
+
+            meta_out = row.to_dict() | exam_row.to_dict()
+
+            if self.return_meta_data:
+                return patch, meta_out
+            return patch
+        else:
+            # pair mode
+            row = self.pairs_df.iloc[index]
+            nodule_id_a = f"{row['nodule_group']}_{row['exam_a']}_{row['exam_idx_a']}"
+            nodule_id_b = f"{row['nodule_group']}_{row['exam_b']}_{row['exam_idx_b']}"
+
+            nodule_ind_a = self.nod_id_to_index[nodule_id_a]
+            nodule_ind_b = self.nod_id_to_index[nodule_id_b]
+
+            nodule_a_row = self.nod_df.iloc[nodule_ind_a]
+            nodule_b_row = self.nod_df.iloc[nodule_ind_b]
+
+            patch_a = self._process_one_nodule(nodule_a_row)
+            patch_b = self._process_one_nodule(nodule_b_row)
+
+            if patch_a.shape != patch_b.shape:
+                raise ValueError(f"Patch shape mismatch in pair mode: A={tuple(patch_a.shape)} B={tuple(patch_b.shape)}")
+
+            if patch_a.shape[1] != self.force_patch_size[2] or \
+               patch_a.shape[2] != self.force_patch_size[1] or \
+               patch_a.shape[3] != self.force_patch_size[0]:
+                raise ValueError(f"Patch shape does not match force_patch_size: got {tuple(patch_a.shape[1:])}, expected {self.force_patch_size}")
+            
+            out = torch.cat([patch_a, patch_b], dim=0)  # (2, z, y, x)
+
+            if self.return_meta_data:
+                image_a_ind = self.id_to_index[row["exam_a"]]
+                image_b_ind = self.id_to_index[row["exam_b"]]
+                image_a_row = self.df.iloc[image_a_ind]
+                image_b_row = self.df.iloc[image_b_ind]
+
+                image_meta = {
+                                **{f"{k}_a": v for k, v in image_a_row.items()},
+                                **{f"{k}_b": v for k, v in image_b_row.items()},
+                            }
+
+                meta_out = row.to_dict() | image_meta
+                return out, meta_out
+            return out
+    
 class RepeatedImageDataset(Dataset):
         def __init__(self, image_tensor, repeat_count):
             self.image = image_tensor

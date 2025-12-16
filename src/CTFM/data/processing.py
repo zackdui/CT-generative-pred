@@ -674,6 +674,14 @@ def save_correct_bounding_boxes(full_data_parquet: str,
                                                 interp="nearestNeighbor")
             warped_np = mask_transform.numpy()
             coords_new = np.argwhere(warped_np > 0.2)
+            if coords_new.size == 0:
+                # log and skip this nodule (or lower threshold)
+                print(
+                    f"[EMPTY] exam_id={exam_id} nodule_ind={nodule_ind} "
+                    f"mask_sum={mask.sum()} warped_min={warped_np.min():.3f} warped_max={warped_np.max():.3f} "
+                    f"out_shape={warped_np.shape} crop_pad={crop_pad} resampling={resampling}"
+                )
+                continue
             j_min_t, i_min_t, k_min_t = coords_new.min(axis=0)
             j_max_t, i_max_t, k_max_t = coords_new.max(axis=0)
             bbox_fixed = [i_min_t, i_max_t, j_min_t, j_max_t, k_min_t, k_max_t]

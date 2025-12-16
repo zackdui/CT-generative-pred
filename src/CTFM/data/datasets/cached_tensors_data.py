@@ -29,6 +29,7 @@ class _ShardCache:
             self._open[shard_name] = torch.load(shard_path, map_location=self.map_location)
             if len(self._open) > self.max_open:
                 self._open.popitem(last=False)
+            self._open.move_to_end(shard_name)
         return self._open[shard_name]
     
 def _rng(seed: Optional[int]) -> np.random.Generator:
@@ -611,3 +612,140 @@ class Encoded3DPairsDirectDataset(Dataset):
 
         x_pair = torch.cat([vol_a, vol_b], dim=0)  # (2*C_lat, Z_lat, H_lat, W_lat)
         return x_pair, pair_row
+    
+
+class CachedNoduleDataset(Dataset):
+    """
+    3D Nodule Cached Dataset.
+
+    Each item:
+      - x: (C_lat, Z_lat, H_lat, W_lat)
+      - meta: Dictionary with exam and nodule metadata.
+
+    Args:
+      full_data_parquet: main metadata parquet with 'exam_id', etc.
+      full_nodule_parquet: nodule metadata parquet with 'nodule_group', 'exam', 'exam_idx', etc.
+      data_index_parquet: index.parquet with 'nodule_key', 'exam', 'shard', 'offset', 'split', etc.
+      data_root: root of encoded cache (with 'tensors/' subdir).
+      paired_nodule_parquet: optional paired nodule metadata parquet (for 'paired' mode).
+      mode: "single" or "paired" (if paired, uses paired_nodule_parquet).
+      split: optional split filter on data_index_parquet.
+      max_cache_size: LRU cache size for shard tensors.
+      max_length: optional max number of nodules.
+    """
+    def __init__(
+        self,
+        full_data_parquet: Union[str, Path],
+        full_nodule_parquet: Union[str, Path],
+        data_index_parquet: Union[str, Path],
+        data_root: Union[str, Path],
+        paired_nodule_parquet: Union[str, Path] = None,
+        mode: str = "single",
+        split: Optional[str] = None,
+        max_cache_size: int = 1000,
+        max_length: Optional[int] = None,
+    ):
+        self.full_df = pd.read_parquet(full_data_parquet)
+        self.index_df = pd.read_parquet(data_index_parquet)
+        self.full_nodule_df = pd.read_parquet(full_nodule_parquet)
+
+        # Optional split filter
+        if split is not None and "split" in self.index_df.columns:
+            self.index_df = self.index_df[self.index_df["split"] == split].reset_index(drop=True)
+
+        # Map exam_id -> row index in full_df
+        self.exam_to_idx: Dict[str, int] = {
+            row["exam_id"]: idx for idx, row in self.full_df.iterrows()
+        }
+        self.nodule_key_to_idx = {f"{row['nodule_group']}_{row['exam']}_{row['exam_idx']}": idx for idx, row in self.full_nodule_df.iterrows()}
+
+        self.mode = mode
+        if self.mode == "paired":
+            if paired_nodule_parquet is None:
+                raise ValueError("paired_nodule_parquet must be provided in 'paired' mode.")
+            self.paired_nodule_df = pd.read_parquet(paired_nodule_parquet)
+
+            self.nodule_key_to_cached_index: Dict[str, pd.Series] = {}
+            for _, row in self.index_df.iterrows():
+                ex = row["nodule_key"]
+                self.nodule_key_to_cached_index[ex] = row
+
+            encoded_nodules = set(self.nodule_key_to_cached_index.keys())
+            nodule_key_a = (
+                self.paired_nodule_df["nodule_group"].astype(str)
+                + "_"
+                + self.paired_nodule_df["exam_a"].astype(str)
+                + "_"
+                + self.paired_nodule_df["exam_idx_a"].astype(str)
+            )
+
+            nodule_key_b = (
+                self.paired_nodule_df["nodule_group"].astype(str)
+                + "_"
+                + self.paired_nodule_df["exam_b"].astype(str)
+                + "_"
+                + self.paired_nodule_df["exam_idx_b"].astype(str)
+            )
+            valid_pairs_mask = (
+                nodule_key_a.isin(encoded_nodules)
+                & nodule_key_b.isin(encoded_nodules)
+            )
+            self.paired_nodule_df = self.paired_nodule_df[valid_pairs_mask].reset_index(drop=True)
+
+
+        self.shards = _ShardCache(Path(data_root) / "tensors", max_open=max_cache_size)
+        self.max_length = max_length
+
+    def __len__(self) -> int:
+        if self.mode == "single":
+            n = len(self.index_df)
+        else: # paired
+            n = len(self.paired_nodule_df)
+        return min(n, self.max_length) if self.max_length is not None else n
+
+    def __getitem__(self, idx: int):
+        if self.mode == "single":
+            idx_row = self.index_df.iloc[idx]
+            nodule_key = idx_row["nodule_key"]
+            exam_id = idx_row["exam"]
+            shard_name = idx_row["shard"]
+            offset = int(idx_row["offset"])
+
+            shard_tensor = self.shards.get(shard_name)  # (N_vols, C_lat, Z_lat, H_lat, W_lat)
+            z_i = shard_tensor[offset]                  # (C_lat, Z_lat, H_lat, W_lat)
+
+            full_row = self.full_df.iloc[self.exam_to_idx[exam_id]].copy()
+            full_nodule_row = self.full_nodule_df.iloc[self.nodule_key_to_idx[nodule_key]].copy()
+            meta = full_row.to_dict() | full_nodule_row.to_dict()
+            return z_i, meta
+        else:  # paired
+            pair_row = self.paired_nodule_df.iloc[idx]
+            nodule_key_a = f"{pair_row['nodule_group']}_{pair_row['exam_a']}_{pair_row['exam_idx_a']}"
+            nodule_key_b = f"{pair_row['nodule_group']}_{pair_row['exam_b']}_{pair_row['exam_idx_b']}"
+
+            row_a = self.nodule_key_to_cached_index[nodule_key_a]
+            row_b = self.nodule_key_to_cached_index[nodule_key_b]
+
+            shard_name_a = row_a["shard"]
+            offset_a = int(row_a["offset"])
+            shard_name_b = row_b["shard"]
+            offset_b = int(row_b["offset"])
+
+            shard_tensor_a = self.shards.get(shard_name_a)
+            z_i_a = shard_tensor_a[offset_a]
+            shard_tensor_b = self.shards.get(shard_name_b)
+            z_i_b = shard_tensor_b[offset_b]
+
+            # Concatenate along channel dimension
+            z_i = torch.cat([z_i_a, z_i_b], dim=0)
+
+            full_row_a = self.full_df.iloc[self.exam_to_idx[pair_row["exam_a"]]].copy()
+            full_nodule_row_a = self.full_nodule_df.iloc[self.nodule_key_to_idx[nodule_key_a]].copy()
+            # full_row_b = self.full_df.iloc[self.exam_to_idx[pair_row["exam_b"]]].copy()
+            full_nodule_row_b = self.full_nodule_df.iloc[self.nodule_key_to_idx[nodule_key_b]].copy()
+
+            meta = (
+                full_row_a.to_dict() | full_nodule_row_a.to_dict() |
+                full_nodule_row_b.to_dict()
+            )
+            return z_i, meta

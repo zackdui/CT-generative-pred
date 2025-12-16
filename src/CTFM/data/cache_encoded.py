@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 import pandas as pd
 
 from .utils import collate_image_meta
-from .datasets.CT_orig_data import CTOrigDataset2D, CTOrigDataset3D 
+from .datasets.CT_orig_data import CTOrigDataset2D, CTOrigDataset3D, CTNoduleDataset3D
 
 def compute_completed_2d_exams(
     dataset_parquet: Union[str, Path],
@@ -75,7 +75,7 @@ def encode_and_cache(
     is_3d: bool = False,
     batch_size: int = 8,
     num_workers: int = 4,
-    shard_size: int = 2048,
+    shard_size: int = 200,
     device: str = "cuda",
     rank: int = 0,        # GPU / process id
 ):
@@ -389,6 +389,256 @@ def consolidate_indices(out_root: Union[str, Path] = "/data/rbg/scratch/nlst_fin
     print(f"[consolidate_indices] Updated {index_path} with {len(df)} total rows.")
 
     # Optional move all shard files to a subdirectory
+    shard_subdir = meta_dir / "shards"
+    shard_subdir.mkdir(exist_ok=True)
+    for sp in shard_paths:
+        sp.rename(shard_subdir / sp.name)
+
+    print(f"[consolidate_indices] Moved {len(shard_paths)} shard files to {shard_subdir}/")
+
+
+def encode_and_cache_nodule(
+    parquet_path_full,
+    nodule_parquet_path,
+    out_root: Union[str, Path] = "/data/rbg/scratch/nlst_nodule_raw_cache",
+    encoder: torch.nn.Module = None,
+    do_encode: bool = False,
+    split: str = "train",
+    batch_size: int = 8,
+    num_workers: int = 4,
+    shard_size: int = 500,
+    device: str = "cuda",
+    rank: int = 0,        # GPU / process id
+):
+    out_root = Path(out_root)
+    tensors_dir = out_root / "tensors"
+    meta_dir = out_root / "meta"
+    tensors_dir.mkdir(parents=True, exist_ok=True)
+    meta_dir.mkdir(parents=True, exist_ok=True)
+
+    def _infer_start_local_shard_idx() -> int:
+        """
+        Look for existing shard files for this rank and continue counting
+        from the largest existing index + 1.
+
+        Filenames: shard_r{rank:02d}_{idx:04d}.pt
+        """
+        pattern = f"shard_r{rank:02d}_*.pt"
+        existing = list(tensors_dir.glob(pattern))
+        if not existing:
+            return 0
+
+        max_idx = -1
+        for p in existing:
+            # stem example: "shard_r00_0003"
+            stem = p.stem
+            parts = stem.split("_")
+            if len(parts) == 3:
+                try:
+                    idx = int(parts[2])
+                    if idx > max_idx:
+                        max_idx = idx
+                except ValueError:
+                    continue
+        return max_idx + 1 if max_idx >= 0 else 0
+
+    # 1) Discover existing indices (for resume)
+    def _load_existing_keys():
+        index_files = sorted(meta_dir.glob("index_shard_*.parquet"))
+        shards_dir = meta_dir / "shards"
+        if shards_dir.exists():
+            index_files += sorted(shards_dir.glob("index_shard_*.parquet"))
+        
+        if not index_files:
+            return set()
+
+        dfs = [pd.read_parquet(p) for p in index_files]
+        df = pd.concat(dfs, ignore_index=True)
+
+        processed = set(zip(df["nodule_group"], df["exam"], df["exam_idx"]))
+
+        return processed
+
+    processed_keys = _load_existing_keys()
+    print(f"[encode_and_cache r{rank}] Resuming with {len(processed_keys)} already-encoded keys.")
+
+    
+    # 2) Dataset and DataLoader + encoder setup
+    # Optional: split work across ranks when launched with torchrun
+    world_size = int(os.environ.get("WORLD_SIZE", "1"))
+    global_rank = int(os.environ.get("RANK", str(rank)))
+
+    if world_size > 1 and not dist.is_initialized():
+        dist.init_process_group(backend="nccl")
+
+    # rewrite the parquet removing already processed exams so we don't load them again from scratch
+    nodule_df = pd.read_parquet(nodule_parquet_path)
+    key_cols = ["nodule_group", "exam", "exam_idx"]
+    mask = ~pd.MultiIndex.from_frame(nodule_df[key_cols]).isin(processed_keys)
+    nodule_df_updated = nodule_df[mask].reset_index(drop=True)
+
+    # Each rank gets a disjoint slice of the updated dataframe
+    df_rank = nodule_df_updated.iloc[global_rank::world_size].reset_index(drop=True)
+
+    if len(df_rank) == 0:
+        print(f"[encode_and_cache r{rank}] No rows assigned to this rank after filtering.")
+        return
+
+    tmp_parquet = meta_dir / f"dataset_r{rank:02d}.parquet"
+    df_rank.to_parquet(tmp_parquet, index=False)
+
+    dataset = CTNoduleDataset3D(parquet_path_full, tmp_parquet, force_patch_size=(128, 128, 32))
+
+    os.remove(tmp_parquet)  # clean up
+
+    loader = DataLoader(
+        dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        pin_memory=True,
+        collate_fn=collate_image_meta,
+    )
+
+    if do_encode:
+        assert encoder is not None, "Encoder must be provided if do_encode is True"
+        encoder = encoder.to(device)
+        encoder.eval()
+
+    current_images = []
+    current_rows = []
+    local_shard_idx = _infer_start_local_shard_idx()  # each rank has its own local shard counter
+
+    def shard_name(local_idx: int) -> str:
+        # Shard filenames include rank so processes never collide
+        return f"shard_r{rank:02d}_{local_idx:04d}.pt"
+
+    # 3) Flush shard helper
+    def flush_shard():
+        nonlocal current_images, current_rows, local_shard_idx
+        if not current_images:
+            return
+
+        shard_tensor = torch.stack(current_images, dim=0)
+        sname = shard_name(local_shard_idx)
+        shard_file = tensors_dir / sname
+        torch.save(shard_tensor, shard_file)
+
+        for offset, row in enumerate(current_rows):
+            row["shard"] = sname
+            row["offset"] = int(offset)
+
+        index_df = pd.DataFrame(current_rows)
+        index_path = meta_dir / f"index_shard_r{rank:02d}_{local_shard_idx:04d}.parquet"
+        index_df.to_parquet(index_path, index=False)
+
+        if rank == 0:
+            print(
+                f"[encode_and_cache r{rank}] Wrote shard {sname} "
+                f"with {len(current_images)} items."
+            )
+
+        current_images = []
+        current_rows = []
+        local_shard_idx += 1
+
+    # 4) Main loop: batched encoding
+    with torch.no_grad():
+        for batch_idx, (images, metas) in enumerate(loader):
+
+            B = images.shape[0]
+
+            if do_encode:
+                images = images.to(device, non_blocking=True)
+                output = encoder.encode(images)  # 2D or 3D
+
+                if isinstance(output, (tuple, list)):
+                    images = output[0]
+                else:
+                    images = output
+                
+            images = images.detach().cpu().float()
+
+            assert images.dim() == 5, f"Expected 5D latents for 3D, got {images.shape}"
+            
+            for i in range(B):
+                meta = metas[i]
+                nodule_group = meta["nodule_group"]
+                exam_id = meta["exam"]
+                exam_idx = meta["exam_idx"]
+                pid = meta["pid"]
+                key = (nodule_group, exam_id, exam_idx)
+                key_str = f"{nodule_group}_{exam_id}_{exam_idx}"
+
+                if key in processed_keys:
+                    continue  # already encoded in a previous run / shard
+
+                processed_keys.add(key)
+
+                z_i = images[i]  # 2D: (C,H,W) | 3D: (C,Z,Y,X)
+                row = {
+                    "pid": pid,
+                    "nodule_group": nodule_group,
+                    "exam": exam_id,
+                    "nodule_key": key_str,
+                    "exam_idx": exam_idx,
+                    "split": split,
+                    "encoded": do_encode,
+                }
+
+                current_images.append(z_i)
+                current_rows.append(row)
+
+                if len(current_images) >= shard_size:
+                    flush_shard()
+
+            if (batch_idx + 1) % 100 == 0:
+                print(f"[encode_and_cache r{rank}] Processed {batch_idx + 1} batches.")
+
+    # Flush any leftover
+    flush_shard()
+
+    print(
+        f"[encode_and_cache r{rank}] Done. Total unique keys seen: {len(processed_keys)}"
+    )
+    
+    if world_size > 1 and dist.is_initialized():
+        dist.destroy_process_group()
+
+
+def consolidate_indices_nodule(out_root: Union[str, Path] = "/data/rbg/scratch/nlst_nodule_raw_cache"):
+    """
+    Merge all meta/index_shard_*.parquet into meta/index.parquet.
+
+    """
+    out_root = Path(out_root)
+    meta_dir = out_root / "meta"
+    shard_paths = sorted(meta_dir.glob("index_shard_*.parquet"))
+
+    if not shard_paths:
+        print(f"[consolidate_indices] No index_shard_*.parquet found in {meta_dir}")
+        return
+
+    # --- load new shards ---
+    new_dfs = [pd.read_parquet(p) for p in shard_paths]
+    new_df = pd.concat(new_dfs, ignore_index=True)
+
+    # --- load existing index if present ---
+    index_path = meta_dir / "index.parquet"
+    if index_path.exists():
+        old_df = pd.read_parquet(index_path)
+        df = pd.concat([old_df, new_df], ignore_index=True)
+        print(f"[consolidate_indices] Loaded existing index with {len(old_df)} rows.")
+    else:
+        df = new_df
+
+    subset_cols = ["nodule_group", "exam", "exam_idx"]
+   
+    df = df.drop_duplicates(subset=subset_cols, keep="last").reset_index(drop=True)
+
+    df.to_parquet(index_path, index=False)
+    print(f"[consolidate_indices] Updated {index_path} with {len(df)} total rows.")
+
     shard_subdir = meta_dir / "shards"
     shard_subdir.mkdir(exist_ok=True)
     for sp in shard_paths:

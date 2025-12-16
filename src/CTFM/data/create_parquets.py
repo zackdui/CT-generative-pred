@@ -314,4 +314,50 @@ def full_parquet_creation(nlst_data,
     print("Done.")
 
 
+def paired_exams_by_pid_nodule_group(parquet_path: str,
+                                     output_path: str | None = None,
+                                     key_cols=("pid", "nodule_group"),
+                                     sort_col="exam_idx"):
+    """
+    Create a paired exams dataframe based on the given key columns and sort column.
+    Each row in the output dataframe corresponds to a pair of exams for the same patient
+    and nodule group, sorted by the specified sort column.
+    """
+    df = pd.read_parquet(parquet_path)
+
+    key_cols = list(key_cols)
+
+    # columns to duplicate (everything except keys)
+    base_cols = [c for c in df.columns if c not in key_cols]
+
+    pairs_rows = []
+
+    for key, g in df.groupby(key_cols, sort=False):
+        g = g.sort_values(sort_col, ascending=True)
+        if len(g) < 2:
+            continue
+
+        for i in range(len(g) - 1):
+            row_a = g.iloc[i]
+            row_b = g.iloc[i + 1]
+
+            pair = {k: v for k, v in zip(key_cols, key)}
+            for col in base_cols:
+                pair[f"{col}_a"] = row_a[col]
+                pair[f"{col}_b"] = row_b[col]
+
+            pairs_rows.append(pair)
+
+    out = pd.DataFrame(pairs_rows)
+
+    if output_path is not None:
+        out.to_parquet(output_path, index=False)
+        return output_path
+    else:
+        dirpath = os.path.dirname(parquet_path)
+        new_path = os.path.join(dirpath, "paired_exams_by_pid_nodule_group.parquet")
+        out.to_parquet(new_path, index=False)
+        return new_path
+
+
     
