@@ -32,7 +32,7 @@ if __name__ == "__main__":
     update_parquet = False
     write_registration = False
     max_nifti_files_to_save = 10  # Set to None to process all files
-    logger_name_nifti_writing = "/data/rbg/users/duitz/CT-generative-pred/metadata/nifti_creation_log.jsonl"
+    logger_name_nifti_writing = "/data/rbg/users/duitz/CT-generative-pred/metadata/train/nifti_creation_log.jsonl"
     registration_log_path = "/data/rbg/users/duitz/CT-generative-pred/metadata/train/registration_logv1.jsonl"
     updated_output_parquet = "/data/rbg/users/duitz/CT-generative-pred/metadata/train/full_data_single_timepoints_updated.parquet"
     bad_registration_log = "/data/rbg/users/duitz/CT-generative-pred/metadata/train/bad_registration_exams.jsonl"
