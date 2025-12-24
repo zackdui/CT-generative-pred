@@ -18,11 +18,15 @@ CT-generative-pred/
 ├── .gitignore
 │
 ├── configs/
+│   ├── fm_3d_paired.yaml
+│   ├── fm_3d_pretraining.yaml
 │   ├── nlst_large.yaml
 │   ├── nlst_small.yaml
 │   ├── paths.yaml
+│   ├── train_vae_3d_nodule.yaml
 │   ├── train_vae_3d.yaml
 │   ├── unet_2d_cfm.yaml
+│   ├── unet_3d_cfm.yaml
 │   └── vae_3d_model.yaml
 │
 ├── metadata/
@@ -33,6 +37,7 @@ CT-generative-pred/
 │       └── full_data_paired_exams.parquet
 │   ├── val/              # Same structure as train also (.gitignored)
 │   ├── test/             # Same structure as train also (.gitignored)
+│   ├── mapping_registered_exams.pkl
 │   ├── nlst_nodule_tracking.parquet
 │   └── zack_exam_to_nifti.pkl
 │
@@ -43,17 +48,21 @@ CT-generative-pred/
 │
 ├── scripts/
 │   ├── eval_2D_fm.py
+│   ├── eval_3D_fm.py
 │   ├── nodules_pt_to_parquet.py
 │   ├── pretraining_2D_fm.py
 │   ├── pretraining_3D_fm.py
 │   ├── run_create_parquets.py
 │   ├── save_encoded_images.py
+│   ├── save_mapping.py
+│   ├── save_nodule_cache.py
 │   ├── save_registrations.py
 │   ├── train_pairs_2D_fm.py
 │   ├── train_pairs_3D_fm.py
+│   ├── train_vae_3d_nodules.py
 │   └── train_vae_3d.py
 │
-└── src/
+├── src/
 │   └── CTFM/
 │       ├── __init__.py
 │       │
@@ -61,7 +70,8 @@ CT-generative-pred/
 │       │   ├── datasets/
 │       │   │   ├── CT_orig_data.py
 │       │   │   ├── cached_tensors_data.py
-│       │   │   ├── nlst_base.py
+│       │   │   └── nlst_base.py
+│       │   ├── bounding_boxes.py
 │       │   ├── cache_encoded.py
 │       │   ├── create_parquets.py
 │       │   ├── flatten_nodules.py
@@ -74,6 +84,7 @@ CT-generative-pred/
 │       │   └── unet_2d/
 │       │       ├── __init__.py
 │       │       ├── auto_encoder_2d.py
+│       │       ├── lightning_3d_cfm.py
 │       │       └── lightning_2d_cfm.py
 │       │
 │       └── utils/
@@ -83,9 +94,14 @@ CT-generative-pred/
 │           ├── data_size.py
 │           ├── pixel_conversions.py
 │           └── plot_lr.py
+├── final_saved_models/        # (.gitignored - maybe) Saved final models after training
 └── experiments/              # logs, checkpoints, outputs (gitignored)
-    ├── runs/
-    └── debug/
+    ├── fm_2d_paired/
+    ├── fm_2d_pretrain/
+    ├── fm_3d_paired/
+    ├── fm_3d_pretrain/
+    ├── vae_2d/
+    └── vae_3d/
 ```
 
 ### Key principles behind this layout
