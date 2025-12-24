@@ -272,3 +272,19 @@ This table gives you a clean way to:
 * Track the same physical nodule across multiple exams via `nodule_group` and `exam_idx`.
 * Join with your predicted results via `(pid, exam, nodid_in_segmentation)` or via spatial proximity in IJK.
 
+## Parquet description for NLST nodule bounding boxes in fixed space
+
+**File name:** `nodules_with_fixed_bboxes.parquet`
+**Row granularity:** One row per *physical nodule in a specific exam*.
+
+Same as `nlst_nodule_tracking.parquet`, with additional fields for the bounding boxes in the transformed space after registration to a fixed image.
+
+**Additional fields:**
+* `coords_fixed` *(list[int] or null)* – Bounding box in fixed image space, as `(i_min, i_max, j_min, j_max, k_min, k_max)`. Any bounding box that could not be created was skipped.
+
+## Parquet description for NLST paired nodules
+
+**File name:** `paired_nodules.parquet`
+**Row granularity:** One row per *pair of physical nodules* for the same patient. Order will be earlier exam nodule first, later exam nodule second.
+
+All the same categories as `nodules_with_fixed_bboxes.parquet` except the collumns will have the suffix _a or _b depending on if it is the earlier exam nodule or later exam nodule. Besides for pid and nodule_group which are not suffixed.

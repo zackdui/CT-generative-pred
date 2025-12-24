@@ -9,7 +9,7 @@ sys.path.insert(0, "/data/rbg/users/duitz/VAE3d/src")
 from vae3d2d import CustomVAE, AttnParams, training_3D, setup_logger
 
 from CTFM.utils import load_config, OPTIMIZERS
-from CTFM.data import CTOrigDataset3D, RepeatedImageDataset
+from CTFM.data import CachedNoduleDataset, CTNoduleDataset3D, RepeatedImageDataset
 
 def setup_model_and_train(encoder_3d_configs, training_3d_configs, base_dataset):
     act = tuple(encoder_3d_configs.act)
@@ -21,6 +21,7 @@ def setup_model_and_train(encoder_3d_configs, training_3d_configs, base_dataset)
         dropout_prob=encoder_3d_configs.dropout_prob,
         spatial_dims=3,
         vae_latent_channels=encoder_3d_configs.vae_latent_channels,
+        smallest_filters=encoder_3d_configs.smallest_filters,
         debug_mode=encoder_3d_configs.debug_mode,
         act=act,
         upsample_mode=encoder_3d_configs.upsample_mode,
@@ -32,6 +33,9 @@ def setup_model_and_train(encoder_3d_configs, training_3d_configs, base_dataset)
         use_attn=encoder_3d_configs.use_attn,
         attn_params=attn_params,
         use_checkpoint=encoder_3d_configs.use_checkpoint,
+        custom_losses=['mse'],
+        downsample_strides=encoder_3d_configs.downsample_strides,
+        vae_down_stride=encoder_3d_configs.vae_down_stride,
     )
 
     model_name = encoder_3d_configs.model_name
@@ -67,6 +71,7 @@ def setup_model_and_train(encoder_3d_configs, training_3d_configs, base_dataset)
         use_amp=training_3d_configs.use_amp,
         amp_dtype=getattr(torch, training_3d_configs.amp_dtype) if training_3d_configs.use_amp else torch.bfloat16,
         use_wandb=training_3d_configs.use_wandb,
+        wandb_project=training_3d_configs.wandb_project,
         wandb_run_name=training_3d_configs.train_wandb_name,
         checkpoint_dir=checkpoint_dir,
         final_save_dir=save_dir,
@@ -77,41 +82,46 @@ def setup_model_and_train(encoder_3d_configs, training_3d_configs, base_dataset)
     return history
 
 if __name__ == "__main__":
-    # run with torchrun --nproc_per_node=k scripts/train_vae_3d.py
+    # run with torchrun --nproc_per_node=k scripts/train_vae_3d_nodules.py
     #### Variables ####
     path_yaml = "configs/paths.yaml"
     vae_3d_model_yaml = "configs/vae_3d_model.yaml"
-    training_3d_yaml = "configs/train_vae_3d.yaml"
-    image_size = (512, 512, 208)
-    max_examples = 100
-    repeat_one_image = True
+    training_3d_yaml = "configs/train_vae_3d_nodule.yaml"
+    image_size = (128, 128, 32)
+    max_examples = None
+    repeat_one_image = False
 
     
     #### Load Configs ####
     base_paths = load_config(path_yaml)
     full_data_parquet = base_paths.full_data_train_parquet
-    saved_transforms_file = base_paths.saved_transforms_file
-    with open(saved_transforms_file, 'rb') as f:
-        saved_transforms = pickle.load(f)
+    full_nodule_parquet = base_paths.bounding_boxes_train_parquet
+    raw_nodule_index = base_paths.raw_nodule_index
+    data_root = base_paths.raw_cached_nodule_dir
 
     encoder_3d_configs = load_config(vae_3d_model_yaml)
     training_3d_configs = load_config(training_3d_yaml)
 
-    base_dataset = CTOrigDataset3D(full_data_parquet, 
-                    saved_transforms=saved_transforms, 
-                    max_length=max_examples, 
-                    return_meta_data=False,
-                    clip_window=(-2000, 500))
+    # base_dataset = CTNoduleDataset3D(
+    #     parquet_path=full_data_parquet,
+    #     nodules_parquet_path=full_nodule_parquet,
+    #     mode="single",
+    #     force_patch_size=image_size,
+    #     return_meta_data=False,
+    # )
+    base_dataset = CachedNoduleDataset(full_data_parquet, 
+                                       full_nodule_parquet, 
+                                       raw_nodule_index, 
+                                       data_root, 
+                                       split="train",
+                                       max_length=max_examples,
+                                       max_cache_size=50)
     
     # Option to repeat one image 
     if repeat_one_image:
         first_image = base_dataset[0]
-        z0, z1 = 90, 90+32
-        y0, y1 = 0, 512
-        x0, x1 = 0, 512
-        first_image = first_image[:, z0:z1, y0:y1, x0:x1] 
         print(f"First image shape: {first_image.shape}, min: {first_image.min()}, max: {first_image.max()}")
-        base_dataset = RepeatedImageDataset(first_image, repeat_count=4000)
+        base_dataset = RepeatedImageDataset(first_image, repeat_count=20000)
 
     #### Setup model and train ####
     history = setup_model_and_train(encoder_3d_configs, training_3d_configs, base_dataset)

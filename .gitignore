@@ -44,8 +44,14 @@ Thumbs.db
 saved_old_files/
 test_data/
 scripts/tester_script.py
+scripts/tester_script2.py
 metadata/train/
 metadata/val/
 metadata/test/
+test_bbox/
+test_bbox*/
+old_metadata/
+metadata/nifti_creation_log.jsonl
+experiments/
 
 

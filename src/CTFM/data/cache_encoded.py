@@ -5,6 +5,7 @@ import torch.distributed as dist
 import torch
 from torch.utils.data import DataLoader
 import pandas as pd
+from tqdm import tqdm
 
 from .utils import collate_image_meta
 from .datasets.CT_orig_data import CTOrigDataset2D, CTOrigDataset3D, CTNoduleDataset3D
@@ -401,6 +402,7 @@ def encode_and_cache_nodule(
     parquet_path_full,
     nodule_parquet_path,
     out_root: Union[str, Path] = "/data/rbg/scratch/nlst_nodule_raw_cache",
+    force_patch_size: Optional[tuple] = (128, 128, 32),
     encoder: torch.nn.Module = None,
     do_encode: bool = False,
     split: str = "train",
@@ -481,13 +483,13 @@ def encode_and_cache_nodule(
     df_rank = nodule_df_updated.iloc[global_rank::world_size].reset_index(drop=True)
 
     if len(df_rank) == 0:
-        print(f"[encode_and_cache r{rank}] No rows assigned to this rank after filtering.")
+        print(f"[encode_and_cache r{global_rank}] No rows assigned to this rank after filtering.")
         return
 
-    tmp_parquet = meta_dir / f"dataset_r{rank:02d}.parquet"
+    tmp_parquet = meta_dir / f"dataset_r{global_rank:02d}.parquet"
     df_rank.to_parquet(tmp_parquet, index=False)
 
-    dataset = CTNoduleDataset3D(parquet_path_full, tmp_parquet, force_patch_size=(128, 128, 32))
+    dataset = CTNoduleDataset3D(parquet_path_full, tmp_parquet, force_patch_size=force_patch_size, max_nodule_cache_size=10, max_volume_cache_size=20)
 
     os.remove(tmp_parquet)  # clean up
 
@@ -496,6 +498,8 @@ def encode_and_cache_nodule(
         batch_size=batch_size,
         shuffle=False,
         num_workers=num_workers,
+        persistent_workers=True,
+        prefetch_factor=2,
         pin_memory=True,
         collate_fn=collate_image_meta,
     )
@@ -511,7 +515,7 @@ def encode_and_cache_nodule(
 
     def shard_name(local_idx: int) -> str:
         # Shard filenames include rank so processes never collide
-        return f"shard_r{rank:02d}_{local_idx:04d}.pt"
+        return f"shard_r{global_rank:02d}_{local_idx:04d}.pt"
 
     # 3) Flush shard helper
     def flush_shard():
@@ -529,10 +533,10 @@ def encode_and_cache_nodule(
             row["offset"] = int(offset)
 
         index_df = pd.DataFrame(current_rows)
-        index_path = meta_dir / f"index_shard_r{rank:02d}_{local_shard_idx:04d}.parquet"
+        index_path = meta_dir / f"index_shard_r{global_rank:02d}_{local_shard_idx:04d}.parquet"
         index_df.to_parquet(index_path, index=False)
 
-        if rank == 0:
+        if global_rank == 0:
             print(
                 f"[encode_and_cache r{rank}] Wrote shard {sname} "
                 f"with {len(current_images)} items."
@@ -542,9 +546,13 @@ def encode_and_cache_nodule(
         current_rows = []
         local_shard_idx += 1
 
+    print(f"[encode_and_cache r{global_rank}] Starting caching loop...")
     # 4) Main loop: batched encoding
+    iterator = loader
+    if global_rank == 0:
+        iterator = tqdm(loader, total=len(loader), desc="Encoding batches")
     with torch.no_grad():
-        for batch_idx, (images, metas) in enumerate(loader):
+        for batch_idx, (images, metas) in enumerate(iterator):
 
             B = images.shape[0]
 
@@ -564,7 +572,7 @@ def encode_and_cache_nodule(
             for i in range(B):
                 meta = metas[i]
                 nodule_group = meta["nodule_group"]
-                exam_id = meta["exam"]
+                exam_id = meta["exam_id"]
                 exam_idx = meta["exam_idx"]
                 pid = meta["pid"]
                 key = (nodule_group, exam_id, exam_idx)
@@ -575,7 +583,8 @@ def encode_and_cache_nodule(
 
                 processed_keys.add(key)
 
-                z_i = images[i]  # 2D: (C,H,W) | 3D: (C,Z,Y,X)
+                # The contiguous().clone() ensures the tensor is not a view and is contiguous in memory
+                z_i = images[i].contiguous().clone()  # 2D: (C,H,W) | 3D: (C,Z,Y,X)
                 row = {
                     "pid": pid,
                     "nodule_group": nodule_group,
@@ -593,13 +602,13 @@ def encode_and_cache_nodule(
                     flush_shard()
 
             if (batch_idx + 1) % 100 == 0:
-                print(f"[encode_and_cache r{rank}] Processed {batch_idx + 1} batches.")
+                print(f"[encode_and_cache r{global_rank}] Processed {batch_idx + 1} batches.")
 
     # Flush any leftover
     flush_shard()
 
     print(
-        f"[encode_and_cache r{rank}] Done. Total unique keys seen: {len(processed_keys)}"
+        f"[encode_and_cache r{global_rank}] Done. Total unique keys seen: {len(processed_keys)}"
     )
     
     if world_size > 1 and dist.is_initialized():
