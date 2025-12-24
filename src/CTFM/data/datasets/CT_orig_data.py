@@ -7,7 +7,6 @@ import numpy as np
 import pandas as pd
 import torch
 # import pyarrow.parquet as pq
-import pyarrow.dataset as pa_ds
 from collections import OrderedDict
 import ants
 
@@ -450,7 +449,11 @@ class CTOrigDataset3D(Dataset):
 class CTNoduleDataset3D(Dataset):
     """
     Mirrors CTOrigDataset3D but returns *nodule crops* instead of full volumes.
-
+    force_patch_size: If specified, will pad/crop the nodule crops to this size (x,y,z).
+        - If not specified, will return the nodule crops as is after clipping to volume bounds.
+    Key Inputs:
+        - force_patch_size: Tuple[int,int,int] or None
+            If specified, will pad/crop the nodule crops to this size (x,y,z).
     Outputs:
       - single mode: torch.Tensor (1, z, y, x) normalized to [-1, 1]
       - pair mode:   torch.Tensor (2, z, y, x) (A then B), normalized to [-1, 1]
@@ -466,10 +469,10 @@ class CTNoduleDataset3D(Dataset):
         return_meta_data: bool = True,
         resample: bool = True,
         resample_size: Tuple[float, float, float] = (0.703125, 0.703125, 2.5),
-        clip_window: Tuple[int, int] = (-1500, 400),
-        force_patch_size: Optional[Tuple[int, int, int]] = None,  # padded or cropped patch size (x,y,z) if specified
-        max_volume_cache_size: int = 1000,
-        max_nodule_cache_size: int = 5000,
+        clip_window: Tuple[int, int] = (-2000, 500),
+        force_patch_size: Optional[Tuple[int, int, int]] = None,  
+        max_volume_cache_size: int = 500,
+        max_nodule_cache_size: int = 500,
         max_length: Optional[int] = None,
     ):
         self.df = pd.read_parquet(parquet_path)
@@ -566,7 +569,18 @@ class CTNoduleDataset3D(Dataset):
         """
         assert vol_1zyx.dim() == 4 and vol_1zyx.shape[0] == 1
         _, Z, Y, X = vol_1zyx.shape
-        updated_bbox, padding = bbox_padded_coords(bbox, (X, Y, Z), target_shape)
+        if target_shape is not None:
+            updated_bbox, padding = bbox_padded_coords(bbox, (X, Y, Z), target_shape)
+        else: # Do not pad/crop just clip to the volume box
+            updated_bbox = (
+                max(bbox[0], 0),
+                min(bbox[1], Y - 1),
+                max(bbox[2], 0),
+                min(bbox[3], X - 1),
+                max(bbox[4], 0),
+                min(bbox[5], Z - 1),
+            )
+            padding = {"i": (0, 0), "j": (0, 0), "k": (0, 0)}
 
         if (updated_bbox[0] > updated_bbox[1]) or (updated_bbox[2] > updated_bbox[3]) or (updated_bbox[4] > updated_bbox[5]):
             raise ValueError(f"Degenerate bbox after clipping: {bbox} for volume shape (Z,Y,X)=({Z},{Y},{X})")
@@ -620,6 +634,7 @@ class CTNoduleDataset3D(Dataset):
             exam_idx = self.id_to_index[exam_id]
             exam_row = self.df.iloc[exam_idx]
 
+            # NOTE: exam will be the exam from exam_row 
             meta_out = row.to_dict() | exam_row.to_dict()
 
             if self.return_meta_data:
@@ -666,12 +681,15 @@ class CTNoduleDataset3D(Dataset):
             return out
     
 class RepeatedImageDataset(Dataset):
-        def __init__(self, image_tensor, repeat_count):
+        def __init__(self, image_tensor, repeat_count, meta_data=None):
             self.image = image_tensor
             self.repeat_count = repeat_count
+            self.meta_data = meta_data
 
         def __len__(self):
             return self.repeat_count
 
         def __getitem__(self, idx):
+            if self.meta_data is not None:
+                return self.image, self.meta_data
             return self.image

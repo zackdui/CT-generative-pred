@@ -1,7 +1,9 @@
 
-from .create_parquets import full_parquet_creation
-from .cache_encoded import encode_and_cache, consolidate_indices
-from .initial_exam_to_nifti import save_mapping_from_exams_to_nifti, save_mapping_transformed_exams_to_nifti
+from .create_parquets import full_parquet_creation, paired_exams_by_pid_nodule_group
+from .cache_encoded import encode_and_cache, consolidate_indices, encode_and_cache_nodule, consolidate_indices_nodule
+from .initial_exam_to_nifti import (save_mapping_from_exams_to_nifti, 
+                                    save_mapping_transformed_exams_to_nifti, 
+                                    save_exam_registration_mapping)
 from .flatten_nodules import pickle_to_parquet
 from .utils import (METAFILE_NOTFOUND_ERR,
                     LOAD_FAIL_MSG,
@@ -18,24 +20,33 @@ from .utils import (METAFILE_NOTFOUND_ERR,
                     get_exam_id,
                     ants_crop_or_pad_like_torchio,
                     nib_to_ants,
+                    itk_to_ants,
                     get_ants_image_from_row,
                     build_dummy_fixed,
                     apply_transforms,
                     ants_to_normalized_tensor,
                     reverse_normalize,
                     collate_image_meta,
-                    compute_dataset_nifti_quantiles)
+                    compute_dataset_nifti_quantiles,
+                    detect_affine_source,
+                    bbox_padded_coords,
+                    pad_ZYX,
+                    save_slices,
+                    save_side_by_side_slices,
+                    save_mp4,
+                    safe_delete)
 
-from .processing import write_new_nifti_files, write_registration_matrices, save_transformed_nifti_files
-from . import datasets 
-from .datasets.CT_orig_data import CTOrigDataset2D, CTOrigDataset3D, RepeatedImageDataset
+from .processing import write_new_nifti_files, write_registration_matrices, save_transformed_nifti_files, remove_bad_exams, save_correct_bounding_boxes
+from .datasets.CT_orig_data import CTOrigDataset2D, CTOrigDataset3D, CTNoduleDataset3D, RepeatedImageDataset
 from .datasets.cached_tensors_data import (Encoded2DSliceDataset, 
                                            Encoded3DFrom2DDataset, 
                                            Encoded3DDirectDataset, 
                                            Encoded2DSlicePairsDataset, 
                                            Encoded3DPairsFrom2DDataset, 
-                                           Encoded3DPairsDirectDataset)
+                                           Encoded3DPairsDirectDataset,
+                                           CachedNoduleDataset)
 from .datasets.nlst_base import NLST_Survival_Dataset
+from .bounding_boxes import get_geometry_from_nifti, get_geometry_from_dicoms, save_bbox_slices
 
 __all__ = [
     "encode_and_cache",
@@ -79,4 +90,23 @@ __all__ = [
     "full_parquet_creation",
     "compute_dataset_nifti_quantiles",
     "save_transformed_nifti_files",
+    "get_geometry_from_nifti",
+    "get_geometry_from_dicoms",
+    "save_bbox_slices",
+    "itk_to_ants",
+    "detect_affine_source",
+    "save_exam_registration_mapping",
+    "remove_bad_exams",
+    "save_correct_bounding_boxes",
+    "bbox_padded_coords",
+    "pad_ZYX",
+    "paired_exams_by_pid_nodule_group",
+    "CTNoduleDataset3D",
+    "encode_and_cache_nodule",
+    "consolidate_indices_nodule",
+    "CachedNoduleDataset",
+    "save_slices",
+    "save_side_by_side_slices",
+    "save_mp4",
+    "safe_delete"
 ]

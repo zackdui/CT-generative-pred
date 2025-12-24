@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 from typing import Callable, Optional, Union, Dict, List, Tuple
 
@@ -632,6 +631,7 @@ class CachedNoduleDataset(Dataset):
       split: optional split filter on data_index_parquet.
       max_cache_size: LRU cache size for shard tensors.
       max_length: optional max number of nodules.
+      return_meta_data: if True, return metadata dictionary along with tensor.
     """
     def __init__(
         self,
@@ -642,8 +642,9 @@ class CachedNoduleDataset(Dataset):
         paired_nodule_parquet: Union[str, Path] = None,
         mode: str = "single",
         split: Optional[str] = None,
-        max_cache_size: int = 1000,
+        max_cache_size: int = 100,
         max_length: Optional[int] = None,
+        return_meta_data: bool = False,
     ):
         self.full_df = pd.read_parquet(full_data_parquet)
         self.index_df = pd.read_parquet(data_index_parquet)
@@ -695,6 +696,7 @@ class CachedNoduleDataset(Dataset):
 
         self.shards = _ShardCache(Path(data_root) / "tensors", max_open=max_cache_size)
         self.max_length = max_length
+        self.return_meta_data = return_meta_data
 
     def __len__(self) -> int:
         if self.mode == "single":
@@ -717,7 +719,9 @@ class CachedNoduleDataset(Dataset):
             full_row = self.full_df.iloc[self.exam_to_idx[exam_id]].copy()
             full_nodule_row = self.full_nodule_df.iloc[self.nodule_key_to_idx[nodule_key]].copy()
             meta = full_row.to_dict() | full_nodule_row.to_dict()
-            return z_i, meta
+            if self.return_meta_data:
+                return z_i, meta
+            return z_i
         else:  # paired
             pair_row = self.paired_nodule_df.iloc[idx]
             nodule_key_a = f"{pair_row['nodule_group']}_{pair_row['exam_a']}_{pair_row['exam_idx_a']}"
@@ -741,11 +745,21 @@ class CachedNoduleDataset(Dataset):
 
             full_row_a = self.full_df.iloc[self.exam_to_idx[pair_row["exam_a"]]].copy()
             full_nodule_row_a = self.full_nodule_df.iloc[self.nodule_key_to_idx[nodule_key_a]].copy()
-            # full_row_b = self.full_df.iloc[self.exam_to_idx[pair_row["exam_b"]]].copy()
+            full_row_b = self.full_df.iloc[self.exam_to_idx[pair_row["exam_b"]]].copy()
             full_nodule_row_b = self.full_nodule_df.iloc[self.nodule_key_to_idx[nodule_key_b]].copy()
 
-            meta = (
-                full_row_a.to_dict() | full_nodule_row_a.to_dict() |
-                full_nodule_row_b.to_dict()
-            )
-            return z_i, meta
+            if self.return_meta_data:
+                meta = {
+                                **{f"{k}_a": v for k, v in full_row_a.items()},
+                                **{f"{k}_b": v for k, v in full_row_b.items()},
+                                **{f"{k}_a": v for k, v in full_nodule_row_a.items()},
+                                **{f"{k}_b": v for k, v in full_nodule_row_b.items()},
+                            }
+                 
+                # meta = (
+                #     full_row_a.to_dict() | full_nodule_row_a.to_dict() |
+                #     full_nodule_row_b.to_dict()
+                # )
+                return z_i, meta
+            else:
+                return z_i

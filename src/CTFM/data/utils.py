@@ -1,4 +1,4 @@
-# Portions of this file are adapted from:
+# Some functions in this file are adapted from:
 # pgmikhael/SybilX (MIT License)
 # Copyright (c) 2021 Peter Mikhael & Jeremy Wohlwend
 #
@@ -11,12 +11,15 @@ import numpy as np
 import nibabel as nib
 import torchio as tio
 import torch
+import torch.nn.functional as F
 from pathlib import Path
-import pickle
+import tempfile
+import imageio.v2 as imageio
 import ants
 import json
-import pandas as pd
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple, Union, Iterable
+import itk
+import matplotlib.pyplot as plt
 
 
 # Error Messages
@@ -37,54 +40,163 @@ DEVICE_ID = {
     -1: 7,
 }
 
-def _extract_cosines(image_orientation):
-    row_cosine = np.array(image_orientation[:3])
-    column_cosine = np.array(image_orientation[3:])
-    slice_cosine = np.cross(row_cosine, column_cosine)
-    return row_cosine, column_cosine, slice_cosine
-
-def _slice_spacing(sorted_datasets):
-    if len(sorted_datasets) > 1:
-        slice_positions = _slice_positions(sorted_datasets)
-        slice_positions_diffs = np.diff(slice_positions)
-        return np.median(slice_positions_diffs)
-
-    return getattr(sorted_datasets[0], "SpacingBetweenSlices", 0)
-
-
-def _slice_positions(sorted_datasets):
-    image_orientation = sorted_datasets[0].ImageOrientationPatient
-    row_cosine, column_cosine, slice_cosine = _extract_cosines(image_orientation)
-    return [np.dot(slice_cosine, d.ImagePositionPatient) for d in sorted_datasets]
-
-def _ijk_to_patient_xyz_transform_matrix(sorted_datasets):
-    first_dataset = sorted_datasets[0]
-    image_orientation = first_dataset.ImageOrientationPatient
-    row_cosine, column_cosine, slice_cosine = _extract_cosines(image_orientation)
-
-    row_spacing, column_spacing = first_dataset.PixelSpacing
-    slice_spacing = _slice_spacing(sorted_datasets)
-
-    transform = np.identity(4, dtype=np.float32)
-    transform[:3, 0] = row_cosine * column_spacing
-    transform[:3, 1] = column_cosine * row_spacing
-    transform[:3, 2] = slice_cosine * slice_spacing
-    transform[:3, 3] = first_dataset.ImagePositionPatient
-    return transform
 
 def pydicom_to_nifti(paths, output_path, return_nifti=False, save_nifti=True):
+    """
+    Reads DICOMs using pydicom/numpy, but saves using ITK to ensure
+    perfect compatibility with ANTsPy.
+    """
+
+    # --- 1. Load Data into Numpy ---
+    # We assume 'paths' is already sorted by Z-position
     slices = [pydicom.dcmread(p) for p in paths]
-    image = np.stack(
-        [s.pixel_array * s.RescaleSlope + s.RescaleIntercept for s in slices], -1
-    )  # y, x, z
-    if return_nifti or save_nifti:
-        affine = _ijk_to_patient_xyz_transform_matrix(slices)
-        nifti_img = nib.Nifti1Image(np.transpose(image, (1, 0, 2)), affine)  # (x, y, z)
+
+    # Create volume (Z, Y, X)
+    # Note: ITK python wraps numpy as (Z, Y, X), so this matches perfectly.
+    volume = np.stack(
+        [
+            s.pixel_array.astype(np.float32) * s.RescaleSlope + s.RescaleIntercept
+            for s in slices
+        ],
+        axis=0,
+    )
+
+    # --- 2. Convert to ITK Image ---
+    # This creates a wrapper, avoiding memory duplication
+    itk_image = itk.image_view_from_array(volume)
+
+    # --- 3. Extract Geometry (LPS) ---
+    first_ds = slices[0]
+    last_ds = slices[-1]
+
+    # Spacing
+    # DICOM PixelSpacing is [RowSpacing (Y), ColSpacing (X)]
+    spacing_y, spacing_x = first_ds.PixelSpacing
+
+    # Calculate Z-spacing/direction using the full stack extent (handles Gantry Tilt)
+    # We do NOT use 'SliceThickness' or cross-products here.
+    pos_first = np.array(first_ds.ImagePositionPatient, dtype=float)
+    pos_last = np.array(last_ds.ImagePositionPatient, dtype=float)
+    n_slices = len(slices)
+
+    # Total vector from first to last slice
+    stack_vector = pos_last - pos_first
+
+    # The average step vector between slices
+    step_vector = stack_vector / (n_slices - 1)
+
+    # The magnitude of the step is the Z-spacing
+    spacing_z = np.linalg.norm(step_vector)
+
+    # Set Spacing (X, Y, Z)
+    itk_image.SetSpacing([float(spacing_x), float(spacing_y), float(spacing_z)])
+
+    # Origin (X, Y, Z) - The center of the first voxel
+    itk_image.SetOrigin([float(x) for x in pos_first])
+
+    # --- 4. Build Direction Matrix ---
+    # ITK Direction is a 3x3 Matrix. Columns are the axis vectors.
+    # Columns must be normalized (unit length).
+
+    iop = np.array(first_ds.ImageOrientationPatient, dtype=float)
+    row_cosines = iop[:3]  # X-axis orientation
+    col_cosines = iop[3:]  # Y-axis orientation
+
+    # Z-axis orientation (Normalized step vector)
+    slice_cosines = step_vector / spacing_z
+
+    # Construct the 3x3 matrix (flattened list or numpy array)
+    # Matrix = [ X_vec, Y_vec, Z_vec ] (columns)
+    # But ITK setDirection expects a flat list or matrix in row-major order?
+    # PyITK expects: [[xx, yx, zx], [xy, yy, zy], [xz, yz, zz]]
+
+    direction_matrix = np.eye(3)
+    direction_matrix[0, 0] = row_cosines[0]
+    direction_matrix[1, 0] = row_cosines[1]
+    direction_matrix[2, 0] = row_cosines[2]
+
+    direction_matrix[0, 1] = col_cosines[0]
+    direction_matrix[1, 1] = col_cosines[1]
+    direction_matrix[2, 1] = col_cosines[2]
+
+    direction_matrix[0, 2] = slice_cosines[0]
+    direction_matrix[1, 2] = slice_cosines[1]
+    direction_matrix[2, 2] = slice_cosines[2]
+
+    # ITK python usually accepts the numpy matrix directly
+    itk_image.SetDirection(direction_matrix)
+
+    # --- 5. Save ---
+    # This handles compression (.nii.gz) and RAS conversion automatically
     if save_nifti:
-        nib.save(nifti_img, output_path)
+        itk.imwrite(itk_image, output_path)
     if return_nifti:
-        return image, nifti_img
-    return image
+        return volume, itk_image
+    return volume
+
+def detect_affine_source(nifti_path, first_dicom_path):
+    """
+    Determines if a NIfTI file has a 'Correct' (ITK/RAS) or 'Incorrect' (Raw/LPS) affine
+    by comparing it to the source DICOM.
+    
+    Returns:
+        'ITK' (Correct, RAS)
+        'NIBABEL_RAW' (Incorrect, LPS)
+        'UNKNOWN' (Ambiguous)
+    """
+    try:
+        # 1. Load DICOM Header (Stop before pixels for speed)
+        dcm = pydicom.dcmread(first_dicom_path, stop_before_pixels=True)
+        dcm_origin = np.array(dcm.ImagePositionPatient, dtype=float)
+        
+        # 2. Load NIfTI Header (Header only)
+        # nibabel loads header lazily, it won't read the big image array here
+        nii = nib.load(nifti_path)
+        nii_affine = nii.affine
+        
+        # Extract NIfTI origin (4th column, first 3 rows)
+        nii_origin = nii_affine[:3, 3]
+        
+        # --- The Check ---
+        # We focus on the X-axis (index 0) and Y-axis (index 1).
+        # In a proper conversion (LPS -> RAS), these signs must flip.
+        
+        # We use a tolerance because float conversion might introduce tiny errors
+        is_x_flipped = np.isclose(nii_origin[0], -dcm_origin[0], atol=1e-3)
+        is_y_flipped = np.isclose(nii_origin[1], -dcm_origin[1], atol=1e-3)
+        
+        is_x_same = np.isclose(nii_origin[0], dcm_origin[0], atol=1e-3)
+        is_y_same = np.isclose(nii_origin[1], dcm_origin[1], atol=1e-3)
+
+        # Logic
+        if is_x_flipped and is_y_flipped:
+            return "ITK" # Correctly converted to RAS
+        elif is_x_same and is_y_same:
+            return "NIBABEL_RAW" # Incorrect: Contains raw LPS coordinates
+        else:
+            # Fallback: Check Description field
+            # SimpleITK often writes "Insight Toolkit" in the description
+            descrip = str(nii.header.get('descrip', b''))
+            if 'Insight Toolkit' in descrip:
+                return "ITK"
+            return "UNKNOWN"
+    except Exception as e:
+        print(f"Error processing {nifti_path} or {first_dicom_path}: {e}")
+        return "UNKNOWN"
+
+
+FLIPPER = np.eye(3)
+FLIPPER[0, 0] = -1
+FLIPPER[1, 1] = -1
+
+
+def correct_affine(ants_image):
+    origin = list(ants_image.origin)
+    origin[0] = -origin[0]
+    origin[1] = -origin[1]
+    ants_image.set_origin(tuple(origin))
+    ants_image.set_direction(ants_image.direction @ FLIPPER)
+    return ants_image
 
 def inspect_nifti_basic(path: str) -> None:
     """
@@ -390,7 +502,7 @@ def get_sample_loader(split_group, args):
 
 def get_exam_id(exam_dict):
     """
-    Given an exam dictionary, compute and return the exam ID.
+    Given an exam dictionary, compute and return the exam ID as a str
     Must contain keys: 'pid', 'screen_timepoint', 'series'.
     """
     pid = exam_dict["pid"]
@@ -404,7 +516,7 @@ def get_exam_id(exam_dict):
             series_id.split(".")[-1][-5:],
         )
     )
-    return exam_id
+    return str(exam_id)
 
 def ants_crop_or_pad_like_torchio(img: ants.ANTsImage,
                                   target_size,
@@ -516,6 +628,31 @@ def nib_to_ants(nifti_img: nib.Nifti1Image) -> ants.ANTsImage:
         spacing=tuple(spacing.tolist()),
         direction=tuple(direction.tolist()),
     )
+    # Normalize orientation in ANTs land
+    # ants_img = ants.reorient_image2(ants_img, "LPS")
+    return ants_img
+
+def itk_to_ants(itk_img):
+    # ITK -> NumPy: shape is (z, y, x)
+
+    arr_zyx = itk.GetArrayViewFromImage(itk_img, keep_axes=False)
+    # Convert to (x, y, z) for ants
+    arr_xyz = np.transpose(arr_zyx, (2, 1, 0))
+
+    # ANTs expects a NumPy array; it will internally transpose, so DON'T transpose here
+    data = arr_xyz.astype(np.float32)
+
+    # Convert ITK vector-like things to plain Python tuples
+    spacing   = tuple(itk_img.GetSpacing())
+    origin    = tuple(itk_img.GetOrigin())
+    direction = np.array(itk_img.GetDirection()).reshape(3, 3)
+
+    ants_img = ants.from_numpy(
+        data,
+        origin=origin,
+        spacing=spacing,
+        direction=direction,
+    )
     return ants_img
 
 def get_ants_image_from_row(row: dict) -> ants.ANTsImage:
@@ -528,6 +665,8 @@ def get_ants_image_from_row(row: dict) -> ants.ANTsImage:
     if row['has_nifti']:
         # Load from NIfTI
         ants_img = ants.image_read(row["nifti_path"])
+        if row["nifti_label"] == "NIBABEL_RAW":
+            ants_img = correct_affine(ants_img)
     else:
         paths = json.loads(row["sorted_paths"])
         out_path = os.path.join("/data/rbg/scratch/lung_ct/nlst_nifti", f"sample_{row['exam_id']}.nii.gz")
@@ -537,33 +676,47 @@ def get_ants_image_from_row(row: dict) -> ants.ANTsImage:
                                                         save_nifti=False,
                                                         return_nifti=True,
                                                     )
-        ants_img = nib_to_ants(nifti_image)
+        ants_img = itk_to_ants(nifti_image)
     return ants_img
 
-def build_dummy_fixed(row):
+def build_dummy_fixed(row, geometry = None):
     shape     = tuple(row["fixed_shape"])
     spacing   = tuple(row["fixed_spacing"])
     origin    = tuple(row["fixed_origin"])
     direction = np.array(row["fixed_direction"]).reshape(3, 3)
 
+    if geometry is not None:
+        shape     = geometry["shape"]
+        spacing   = geometry["spacing"]
+        origin    = geometry["origin"]
+        direction = geometry["direction"]
+        # Convert spacing/origin to Python floats
+        shape = tuple(int(s) for s in shape)
+        spacing = tuple(float(s) for s in spacing)
+        origin  = tuple(float(o) for o in origin)
+    
     dummy = ants.from_numpy(
         np.zeros(shape, dtype=np.float32),
         spacing=spacing,
         origin=origin,
         direction=direction,
     )
+
     return dummy
 
 def apply_transforms(image: ants.ANTsImage, 
                      forward_transform: str | None, 
+                     reverse_transform: bool | None = None,
                      dummy_fixed: ants.ANTsImage | None = None, 
                      row: dict | None = None,
+                     geometry = None,
                      resampling: bool = True, 
                      resampling_params: tuple = (0.703125 ,0.703125, 2.5), 
                      crop_pad: bool = True, 
                      target_size: tuple = (512, 512, 208), 
-                     pad_hu: int = -1350,
-                     only_xy: bool = False) -> ants.ANTsImage:
+                     pad_hu: int = -2000,
+                     only_xy: bool = False,
+                     interp: str = "linear") -> ants.ANTsImage:
     """
     This function applies transforms to a single ants image.
     It can also resample the image before applying the transform.
@@ -592,30 +745,36 @@ def apply_transforms(image: ants.ANTsImage,
         The HU value to use for padding.
     - only_xy: bool
         If True, only crop/pad in x and y dimensions, leave z unchanged.
+    - interp: str
+        The interpolation method to use when applying the transform.
     """
     assert dummy_fixed is not None or row is not None, "Either dummy_fixed or row must be provided."
-    if dummy_fixed is None:
-        dummy_fixed = build_dummy_fixed(row)
 
-    if resampling:
-        image = ants.resample_image(
-            image,
-            resample_params=resampling_params,
-            use_voxels=False,
-            interp_type=1
-        )
-    
+    if forward_transform is not None:
+        assert reverse_transform is not None, \
+            "reverse_transform must be provided when forward_transform is not None"
+        
     # If it is already aligned because it is the first image, skip transform application
     if forward_transform is not None:
+        if dummy_fixed is None:
+            dummy_fixed = build_dummy_fixed(row, geometry)
         transformed_img = ants.apply_transforms(
             fixed=dummy_fixed,
             moving=image,
             transformlist=[forward_transform],
-            interpolator="linear"
+            whichtoinvert=[reverse_transform],
+            interpolator=interp
         )
     else: # If transform is None
         transformed_img = image
 
+    if resampling:
+        transformed_img = ants.resample_image(
+            transformed_img,
+            resample_params=resampling_params,
+            use_voxels=False,
+            interp_type=1
+        )
     if crop_pad:
         transformed_img = ants_crop_or_pad_like_torchio(
             transformed_img,
@@ -623,7 +782,7 @@ def apply_transforms(image: ants.ANTsImage,
             pad_value=pad_hu,
             only_xy=only_xy,
         )
-        
+
     return transformed_img
 
 def ants_to_normalized_tensor(ants_img: ants.ANTsImage, clip_window: Tuple[int, int]) -> torch.FloatTensor:
@@ -642,7 +801,7 @@ def ants_to_normalized_tensor(ants_img: ants.ANTsImage, clip_window: Tuple[int, 
     image_tensor = 2 * (image_tensor - clip_window[0]) / (clip_window[1] - clip_window[0]) - 1
     return image_tensor
 
-def reverse_normalize(tensor: torch.FloatTensor, clip_window: Tuple[int, int]) -> torch.FloatTensor:
+def reverse_normalize(tensor: torch.FloatTensor, clip_window: Tuple[int, int] = [-2000, 500]) -> torch.FloatTensor:
     """
     Reverse the normalization of a tensor from [-1, 1] back to original HU values.
 
@@ -667,3 +826,225 @@ def collate_image_meta(batch):
     images = torch.stack(images, dim=0)
     metas = list(metas)
     return images, metas
+
+def bbox_padded_coords(bbox, image_shape, target_size):
+    """
+    Expand a bbox within image bounds and compute remaining padding needed
+    to reach target size.
+
+    Args:
+        bbox: (i_min, i_max, j_min, j_max, k_min, k_max)  # inclusive
+        image_shape: (J, I, K)  # mask[j, i, k]
+        target_size: (target_J, target_I, target_K)
+
+    Returns:
+        new_bbox:
+            (i_min_new, i_max_new, j_min_new, j_max_new, k_min_new, k_max_new)
+        padding:
+            {
+              "i": (pad_i_before, pad_i_after),
+              "j": (pad_j_before, pad_j_after),
+              "k": (pad_k_before, pad_k_after),
+            }
+    """
+    i_min, i_max, j_min, j_max, k_min, k_max = map(int, bbox)
+    J, I, K = image_shape
+    targ_J, targ_I, targ_K = target_size
+
+    # Current sizes
+    size_i = i_max - i_min + 1
+    size_j = j_max - j_min + 1
+    size_k = k_max - k_min + 1
+
+    # Compute padding needed on each side
+    pad_i = max(targ_I - size_i, 0)
+    pad_j = max(targ_J - size_j, 0)
+    pad_k = max(targ_K - size_k, 0)
+
+     # desired symmetric expansion
+    want_i_before = pad_i // 2
+    want_i_after  = pad_i - want_i_before
+
+    want_j_before = pad_j // 2
+    want_j_after  = pad_j - want_j_before
+
+    want_k_before = pad_k // 2
+    want_k_after  = pad_k - want_k_before
+
+    # actual expansion limited by image bounds
+    # The max I can grow in the min direction is the coordinate itself
+    grow_i_before = min(want_i_before, i_min)
+    grow_i_after  = min(want_i_after, I - 1 - i_max)
+
+    grow_j_before = min(want_j_before, j_min)
+    grow_j_after  = min(want_j_after, J - 1 - j_max)
+
+    grow_k_before = min(want_k_before, k_min)
+    grow_k_after  = min(want_k_after, K - 1 - k_max)
+
+    # new bbox inside image
+    i_min_new = i_min - grow_i_before
+    i_max_new = i_max + grow_i_after
+
+    j_min_new = j_min - grow_j_before
+    j_max_new = j_max + grow_j_after
+
+    k_min_new = k_min - grow_k_before
+    k_max_new = k_max + grow_k_after
+
+    # remaining padding needed AFTER cropping
+    pad_i = (want_i_before - grow_i_before, want_i_after - grow_i_after)
+    pad_j = (want_j_before - grow_j_before, want_j_after - grow_j_after)
+    pad_k = (want_k_before - grow_k_before, want_k_after - grow_k_after)
+
+    new_bbox = (i_min_new, i_max_new, j_min_new, j_max_new, k_min_new, k_max_new)
+    padding = {"i": pad_i, "j": pad_j, "k": pad_k}
+
+    return new_bbox, padding
+
+def pad_ZYX(vol_zyx: torch.Tensor, padding, pad_value=0):
+    """
+    vol_zyx: (Z, Y, X) tensor
+    padding: dict with keys "i","j","k" mapping to (before, after)
+             i -> X, j -> Y, k -> Z
+    """
+    assert vol_zyx.ndim == 3, f"Expected (Z,Y,X), got {tuple(vol_zyx.shape)}"
+
+    (pad_i0, pad_i1) = padding["i"]  # Y
+    (pad_j0, pad_j1) = padding["j"]  # X
+    (pad_k0, pad_k1) = padding["k"]  # Z
+
+    # it pads last dimension to first dimension order
+    pad_tuple = (pad_j0, pad_j1, pad_i0, pad_i1, pad_k0, pad_k1)
+
+    # F.pad for 3D works cleanly on a 5D tensor (N,C,D,H,W)
+    x = vol_zyx.unsqueeze(0).unsqueeze(0)  # (1,1,Z,Y,X)
+
+    x = F.pad(x, pad_tuple, mode="constant", value=pad_value)
+
+    return x.squeeze(0).squeeze(0)  # back to (Z,Y,X)
+
+def save_slices(
+    volume: Union[np.ndarray, torch.Tensor],
+    slice_indices: Optional[Iterable[int]] = None,
+    output_dir: str = "./test_bbox",
+    prefix: str = "transformed",
+    cmap: str = "gray",
+    vmin: Optional[float] = None,
+    vmax: Optional[float] = None,
+    return_images: bool = True,
+) -> None:
+    """
+    Save 2D slices from a 3D volume either with the provided slice or the middle few slices.
+
+    Assumptions:
+        - volume shape: (Z, H, W)
+
+    Args
+    ----
+    volume:
+        3D array (Z, H, W) or torch.Tensor with that shape.
+    slice_indices:
+        Iterable of k-indices to visualize.
+        If None, defaults to the middle few slices.
+    output_dir:
+        Directory where PNGs will be saved.
+    prefix:
+        Prefix for output filenames, e.g. "orig" or "transformed".
+    cmap:
+        Matplotlib colormap for the slices.
+    vmin, vmax:
+        Optional intensity limits for imshow. If None, matplotlib auto-scales.
+    return_images: bool = True
+        Whether to return the images as a dictionary as well as saving them.
+
+    Output
+    ------
+    Saves PNG files like:
+        {output_dir}/{prefix}_z{kk:03d}.png
+    """
+    # Convert torch.Tensor -> numpy if needed
+    if torch is not None and isinstance(volume, torch.Tensor):
+        volume = volume.detach().cpu().numpy()
+
+    volume = np.asarray(volume)
+    if volume.ndim == 4 and volume.shape[0] == 1:
+        volume = volume[0]  # squeeze channel dim
+
+    if volume.ndim != 3:
+        raise ValueError(f"Expected volume of shape (Z, H, W), got {volume.shape}")
+
+    Z, H, W = volume.shape
+
+    # Default slice range = bbox z-span
+    if slice_indices is None:
+        slice_indices = range(Z // 2 - 3, Z // 2 + 3)  # middle 6 slices
+    else:
+        slice_indices = list(slice_indices)
+
+    collected = {} if return_images else None
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    for k in slice_indices:
+        if k < 0 or k >= Z:
+            continue
+
+        slice_img = volume[k]  # shape (H, W)
+
+        if return_images:
+            collected[k] = slice_img
+
+        fig, ax = plt.subplots(figsize=(5, 5))
+        im = ax.imshow(slice_img, cmap=cmap, vmin=vmin, vmax=vmax)
+        ax.set_title(f"Slice k={k}")
+        ax.axis("off")
+
+        out_path = os.path.join(output_dir, f"{prefix}_z{k:03d}.png")
+        plt.savefig(out_path, bbox_inches="tight", dpi=150)
+        plt.close(fig)
+
+    if return_images:
+        return collected
+    
+def save_side_by_side_slices(
+    slicesA: dict,  # k -> HxW
+    slicesB: dict,  # k -> HxW
+    output_dir: str,
+    prefix: str = "pair",
+    cmap: str = "gray",
+    vmin: Optional[float] = None,
+    vmax: Optional[float] = None,
+    gap: int = 8,
+):
+    os.makedirs(output_dir, exist_ok=True)
+    ks = sorted(set(slicesA.keys()) | set(slicesB.keys()))
+
+    for k in ks:
+        a = slicesA.get(k)
+        b = slicesB.get(k)
+        if a is None and b is None:
+            continue
+        if a is None:
+            combo = b
+        elif b is None:
+            combo = a
+        else:
+            # simple horizontal concat with a small black gap
+            gap_col = np.zeros((a.shape[0], gap), dtype=a.dtype)
+            combo = np.concatenate([a, gap_col, b], axis=1)
+
+        out_path = os.path.join(output_dir, f"{prefix}_z{k:03d}.png")
+        plt.imsave(out_path, combo, cmap=cmap, vmin=vmin, vmax=vmax)
+
+def save_mp4(frames, fps=10):
+    tmp = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
+    tmp.close()
+    imageio.mimsave(tmp.name, frames, fps=fps)  # imageio automatically picks mp4 writer
+    return tmp.name
+
+def safe_delete(path):
+    try:
+        os.remove(path)
+    except OSError:
+        pass
