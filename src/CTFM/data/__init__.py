@@ -34,7 +34,8 @@ from .utils import (METAFILE_NOTFOUND_ERR,
                     save_slices,
                     save_side_by_side_slices,
                     save_mp4,
-                    safe_delete)
+                    safe_delete,
+                    save_montage)
 
 from .processing import write_new_nifti_files, write_registration_matrices, save_transformed_nifti_files, remove_bad_exams, save_correct_bounding_boxes
 from .datasets.CT_orig_data import CTOrigDataset2D, CTOrigDataset3D, CTNoduleDataset3D, RepeatedImageDataset
@@ -108,5 +109,6 @@ __all__ = [
     "save_slices",
     "save_side_by_side_slices",
     "save_mp4",
-    "safe_delete"
+    "safe_delete",
+    "save_montage"
 ]

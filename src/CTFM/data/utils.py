@@ -19,6 +19,7 @@ import ants
 import json
 from typing import Callable, Dict, List, Optional, Tuple, Union, Iterable
 import itk
+import math
 import matplotlib.pyplot as plt
 
 
@@ -1048,3 +1049,66 @@ def safe_delete(path):
         os.remove(path)
     except OSError:
         pass
+
+def save_montage(
+    volume,                 # shape (Z, H, W)
+    out_path,
+    slice_indices=list(range(0, 32)),
+    ncols=6,
+    cmap="gray",
+    vmin=None,
+    vmax=None,
+    title=None,
+    show_slice_labels=True,
+    save_fig=True,
+    return_fig=False,
+):
+    """
+    If you return the fig make sure to do plt.close(fig) after returning it
+    """
+    if len(volume.shape) == 4:
+        volume = volume.squeeze(0)
+        
+    Z = volume.shape[0]
+    slice_indices = [int(k) for k in slice_indices if 0 <= int(k) < Z]
+    if len(slice_indices) == 0:
+        raise ValueError("No valid slice indices to montage.")
+
+    n = len(slice_indices)
+    nrows = math.ceil(n / ncols)
+
+    # Make figure size scale with grid
+    fig_w = 2.2 * ncols
+    fig_h = 2.2 * nrows
+    fig, axes = plt.subplots(nrows, ncols, figsize=(fig_w, fig_h))
+
+    # axes can be 2D or 1D depending on nrows/ncols
+    axes = np.atleast_2d(axes)
+
+    for idx, k in enumerate(slice_indices):
+        r, c = divmod(idx, ncols)
+        ax = axes[r, c]
+        ax.imshow(volume[k], cmap=cmap, vmin=vmin, vmax=vmax)
+        ax.axis("off")
+        if show_slice_labels:
+            ax.set_title(f"z={k}", fontsize=10)
+
+    # Turn off any unused panels
+    for idx in range(n, nrows * ncols):
+        r, c = divmod(idx, ncols)
+        axes[r, c].axis("off")
+
+    if title:
+        fig.suptitle(title, fontsize=14)
+
+    fig.tight_layout()
+    # If you used suptitle, leave room for it
+    if title:
+        fig.subplots_adjust(top=0.92)
+
+    if save_fig:
+        os.makedirs(os.path.dirname(out_path), exist_ok=True)
+        fig.savefig(out_path, bbox_inches="tight", dpi=200)
+    if return_fig:
+        return fig
+    plt.close(fig)
