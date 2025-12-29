@@ -13,6 +13,7 @@ class AutoEncoder_Lightning(pl.LightningModule):
         super().__init__()
         self.save_hyperparameters()
         self.autoencoder = AutoencoderKL.from_pretrained(f"stabilityai/sd-vae-ft-ema")
+        # Other model options "stabilityai/sd-vae-ft-mse", "stabilityai/sdxl-vae"
         # model_params = sum(p.numel() for p in self.autoencoder.parameters() if p.requires_grad)
         # print(f"Model Parameters: {model_params/1e6:.2f} Million")
         
