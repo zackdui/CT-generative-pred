@@ -1,3 +1,5 @@
+# This file is based on code from OpenAI's guided-diffusion repository
+# (https://github.com/openai/guided-diffusion), licensed under the MIT License.
 """
 Helpers to train with 16-bit precision.
 """

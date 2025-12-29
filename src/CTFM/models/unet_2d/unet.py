@@ -1,3 +1,6 @@
+# This file is based on code from OpenAI's guided-diffusion repository
+# (https://github.com/openai/guided-diffusion), licensed under the MIT License.
+# Modified by Zack Duitz.
 from abc import abstractmethod
 
 import math

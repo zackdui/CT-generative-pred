@@ -1,3 +1,5 @@
+# This file is based on code from OpenAI's guided-diffusion repository
+# (https://github.com/openai/guided-diffusion), licensed under the MIT License.
 """
 Logger copied from OpenAI baselines to avoid extra RL-based dependencies:
 https://github.com/openai/baselines/blob/ea25b9e8b234e6ee1bca43083f8f3cf974143998/baselines/logger.py
