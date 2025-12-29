@@ -1,0 +1,7 @@
+wandb_project: test_only
+wandb_run_name: test_run_only
+debug_flag: false
+train_batch_size: 1
+test_batch_size: 1
+lr: 0.005
+num_samples: null

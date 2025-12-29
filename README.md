@@ -25,6 +25,8 @@ Next, install the package in editable mode (from the repo root directory where R
 pip install -e .
 ```
 
+### Note: All the modules are importable from CTFM.data/models/utils
+
 ## Loading Data
 
 In docs process.md will give the full overview of the data loading process. Here is a brief summary of the process and parquet files used for loading data.
@@ -38,6 +40,7 @@ In docs process.md will give the full overview of the data loading process. Here
 - **patient_timelines.parquet** – One row per patient with all their exams
 - **paired_exams.parquet** – One row per consecutive exams
 - **nlst_nodule_tracking.parquet** – Nodule tracking information. One nodule per row.
+- **nodules_with_fixed_bboxes.parquet** – Nodule information with fixed bounding boxes for registered images.
 
 
 ## Workflow
@@ -50,6 +53,8 @@ The path to all the encoded data is: /data/rbg/scratch/nlst_encoded/train5
 
 This project builds on code from:
 - SybilX, MIT License (c) 2021 Peter Mikhael & Jeremy Wohlwend
+
+Special thanks to Peter Mikhael for all his mentorship in completing this project.
 
 Special thanks to Benny Grey for contributions to the upstream project
 that informed evaluation of the models.

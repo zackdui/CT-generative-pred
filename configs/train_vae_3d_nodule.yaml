@@ -1,33 +1,34 @@
 # configs/train_vae_random_parts.yaml
 # Names
-train_wandb_name: nodule_single
+train_wandb_name: single2_zero_beta
 # This is just a suffix; you’re already building:
 # checkpoint_dir=f"{model_name[:-3]}_checkpoints"
 checkpoint_dir_suffix: "_checkpoints"
 
 # Optimizer
 optimizer_cls: adamw        # This is mapped to torch.optim.AdamW
-optimizer_lr: 1.0e-3
-optimizer_weight_decay: 0.01
+optimizer_lr: 5.0e-4
+optimizer_weight_decay: .01 # was .01
 
 # Training3D core settings
 accum_steps: 8
 patching: null    # null | random_parts | full
 patch_size: [64, 128, 128]
 patches_per_volume: 6
-train_batch: 2
+train_batch: 16
 val_batch: 1
-epochs: 10
+epochs: 20
 train_split: 0.95
 num_workers: 2
 
 # Mixed precision / AMP
-use_amp: true
+use_amp: false
 amp_dtype: bfloat16   # used only if you turn use_amp on
 
 # Logging / checkpoints
 use_wandb: true
+wandb_project: vae_real
 save_every_steps: 10
-best_check_every_steps: 10
+best_check_every_steps: 20
 
 

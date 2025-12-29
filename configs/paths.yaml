@@ -1,32 +1,56 @@
 # configs/paths.yaml
 
+# Directories
 nifti_dir: /data/rbg/scratch/lung_ct/nlst_nifti
 nifti_transformed_dir: /data/rbg/scratch/lung_ct/nlst_nifti_transformed
-parquet_dir: /data/rbg/users/duitz/CT-generative-pred/metadata
+metadata_dir: /data/rbg/users/duitz/CT-generative-pred/metadata
 registration_dir: /data/rbg/scratch/lung_ct/registration_zack
+orig_registration_dir: /data/rbg/scratch/lung_ct/nlst_registration_corrected
 encoded_dir_2d: /data/rbg/scratch/nlst_final_encoded/2d
 encoded_dir_3d: /data/rbg/scratch/nlst_final_encoded/3d
-vae_3d_checkpoint_path: placeholder_for_3d_vae_checkpoint_path.pt
-nodule_tracked_file: /data/rbg/users/pgmikhael/current/SybilX/notebooks/NLSTNodules/pid2tracked_nodules.p
-saved_transforms_file: /data/rbg/users/duitz/CT-generative-pred/metadata/saved_transforms
+raw_cached_nodule_dir: /data/rbg/scratch/nlst_nodule_raw_cache
+encoded_cached_nodule_dir: /data/rbg/scratch/nlst_nodule_encoded_cache
+raw_nodule_index: /data/rbg/scratch/nlst_nodule_raw_cache/meta/index.parquet
 
-metadata_dir: /data/rbg/users/duitz/CT-generative-pred/metadata
+# Files
+mapping_registered_exams: /data/rbg/users/duitz/CT-generative-pred/metadata/mapping_registered_exams.pkl
+nodule_tracked_file: /data/rbg/users/pgmikhael/current/SybilX/notebooks/NLSTNodules/pid2tracked_nodules.p
+nodule_tracked_parquet: /data/rbg/users/duitz/CT-generative-pred/metadata/nlst_nodule_tracking.parquet
+saved_transforms_file: /data/rbg/users/duitz/CT-generative-pred/metadata/exam_to_nifti_transformed.pkl
+vae_3d_checkpoint_path: placeholder_for_3d_vae_checkpoint_path.pt
+
 
 # Root for the shared NLST JSON / PNG / annotations
 shared_nlst_root: /data/rbg/shared/datasets/NLST/NLST # This one was checked
 
 # After creating parquets file paths Train
-full_data_train_parquet: /data/rbg/users/duitz/CT-generative-pred/metadata/train/full_data_single_timepoints.parquet
+full_data_train_parquet: /data/rbg/users/duitz/CT-generative-pred/metadata/train/full_data_single_timepoints_nodule_only.parquet
 full_data_train_paired_parquet: /data/rbg/users/duitz/CT-generative-pred/metadata/train/full_data_paired_exams.parquet
 full_data_train_timelines_parquet: /data/rbg/users/duitz/CT-generative-pred/metadata/train/full_data_timelines.parquet
 
+bounding_boxes_train_parquet: /data/rbg/users/duitz/CT-generative-pred/metadata/train/nodules_with_fixed_bboxes.parquet
+paired_nodules_train_parquet: /data/rbg/users/duitz/CT-generative-pred/metadata/train/paired_nodules.parquet
+
 # After creating parquets file paths Val
-full_data_val_parquet: /data/rbg/users/duitz/CT-generative-pred/metadata/dev/full_data_single_timepoints.parquet
-full_data_val_paired_parquet: /data/rbg/users/duitz/CT-generative-pred/metadata/dev/full_data_paired_exams.parquet
-full_data_val_timelines_parquet: /data/rbg/users/duitz/CT-generative-pred/metadata/dev/full_data_timelines.parquet
+full_data_val_parquet: /data/rbg/users/duitz/CT-generative-pred/metadata/val/full_data_single_timepoints_nodule_only.parquet
+full_data_val_paired_parquet: /data/rbg/users/duitz/CT-generative-pred/metadata/val/full_data_paired_exams.parquet
+full_data_val_timelines_parquet: /data/rbg/users/duitz/CT-generative-pred/metadata/val/full_data_timelines.parquet
+
+bounding_boxes_val_parquet: /data/rbg/users/duitz/CT-generative-pred/metadata/val/nodules_with_fixed_bboxes.parquet
+paired_nodules_val_parquet: /data/rbg/users/duitz/CT-generative-pred/metadata/val/paired_nodules.parquet
 
 # After creating parquets file paths Test
-full_data_test_parquet: /data/rbg/users/duitz/CT-generative-pred/metadata/test/full_data_single_timepoints.parquet
+full_data_test_parquet: /data/rbg/users/duitz/CT-generative-pred/metadata/test/full_data_single_timepoints_nodule_only.parquet
 full_data_test_paired_parquet: /data/rbg/users/duitz/CT-generative-pred/metadata/test/full_data_paired_exams.parquet
 full_data_test_timelines_parquet: /data/rbg/users/duitz/CT-generative-pred/metadata/test/full_data_timelines.parquet
 
+bounding_boxes_test_parquet: /data/rbg/users/duitz/CT-generative-pred/metadata/test/nodules_with_fixed_bboxes.parquet
+paired_nodules_test_parquet: /data/rbg/users/duitz/CT-generative-pred/metadata/test/paired_nodules.parquet
+
+# Experiment Directories
+pretraining_3d_fm_experiment_dir: /data/rbg/users/duitz/CT-generative-pred/experiments/fm_3d_pretrain
+pretraining_2d_cfm_experiment_dir: /data/rbg/users/duitz/CT-generative-pred/experiments/fm_2d_pretrain
+paired_3d_fm_experiment_dir: /data/rbg/users/duitz/CT-generative-pred/experiments/fm_3d_paired
+paired_2d_cfm_experiment_dir: /data/rbg/users/duitz/CT-generative-pred/experiments/fm_2d_paired
+vae_3d_experiment_dir: /data/rbg/users/duitz/CT-generative-pred/experiments/vae_3d
+vae_2d_experiment_dir: /data/rbg/users/duitz/CT-generative-pred/experiments/vae_2d

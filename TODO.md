@@ -1,7 +1,17 @@
 # TODO
 
+
+## Currently Working On
+
+Add aditional eval on the finished model for VAE
+finish the 3D flow matching training script for unpaired and paired training
+Need a wandb eval for 3D flow matching training script
+
+Set up EMA weights for inference
+
+Remove 2D from process.md doc if never run it
+
 ## Full Files to write
-- [ ] 3D VAE training script
 - [ ] 3D FM pretraining script
 - [ ] 3D FM paired training script
 - [ ] 2D FM paired script
@@ -11,41 +21,28 @@
 - [ ] 3D autencoder eval which also should be worked on in VAE to update to the training script
 
 ## Data
-- [x] Create initial metadata
+
 - [ ] Check same Z value when loading a pair after processing full volume
-- [ ] Test apply transform in processing
-- [ ] Have registration add on to a file of bad niftis and add the ones we already passed
+- [ ] Check reconstruction quality of an actual nodule from autoencoders in 2D
 - [ ] Check 2D autoencoding in HU space and then bringing it back after for visualization
-  - [ ] Check a scan with cancer and see if it generates the cancer
-- [ ] Write code to get and visualize bounding boxes around tumors so I can check them
-  - [ ] Add a dataloader for padded regions around tumors
-- [ ] Crop Loading, load crops around tumors and then pad them
-- [ ] Use the given segmentations for testing. Try to load them and visualize them
-  - [ ] Use the volume
-  - [ ] Use the coordinates. See if my mapping matches up
 
 ---
 
 ## Model
-- [ ] Fix config file for model hyperparams
-- [ ] Fix config file for model training 3d
 - [ ] If now it is needed because of HU values finetune the 2D VAE on HU value images
-- [ ] Add 3D unet model for flow matching
+- [ ] For the 2D model put the metrics with the outputs directory
+- [ ] Save more checkpoints for the 2D model during training
+- [ ] Try making the loss more specifically around the nodule regions
+- [ ] Make charts as I go along the 2D training experiments to track the results
 
 ---
 
-## 3D VAE Tests
-- [ ] Simpler first upsample
-- [ ] Deconv as first upsample layer
-- [ ] Group norm back
-- [ ] Fix loss functions
-- [ ] Stride 1 for VAE down
+## 3D VAE Improvements and Tests
 
 ---
 
 ## Evaluation
-- [ ] Ask peter to show me a nodule to test on
-- [ ] Ask about confidence scores and how that works
+
 ---
 
 ## Experiments
@@ -54,50 +51,50 @@
     - [ ] Try with regular images
     - [ ] Full run on encoded images
  - [ ] For some try with and without time component and compare results
+  - [ ] Time component concatenatet
+  - [ ] Time component added
  - [ ] Full paired test no pretraining encoded images
  - [ ] Full paired test no pretraining regular images
  - [ ] Full paired test pretraining encoded images
  - [ ] Full paired test pretraining regular images
  - [ ] Full paired test pretraining encoded images: Scans with nodules only
  - [ ] Full paired test pretraining regular images: Scans with nodules only
+ - [ ] Start from gaussian conditioned on the image
+ - [ ] Start from the image directly
+ - [ ] Run model on bounding boxes around the nodules 
+    - [ ] starting from pretrained on full lungs and pretrained on just segments
+ - [ ] Try smaller architectures. The paper had a smaller architecture I can use
 - [ ] 3D
-
-
----
-
-## Infrastructure
-- [ ] Fix the __init__.py files
-- [ ] Allow for local access to 3D_Vae and downloaded package
+- [ ] Try different clipping ranges for HU values and update padding
+- Try with and without autoencoding for 3D small patches around nodules
 
 ---
 
 ## Docs
-- [ ] Write `README.md` with setup + quickstart
-- [ ] Document data preprocessing steps
-- [ ] Describe experiment naming convention
-- [ ] Describe full repo layout
-- [ ] Describe all parquet files
-- [ ] Add mamba env create -f environment.yml to read me
-- [ ] Add citation of the original unet files
-- [ ] Document that sorted paths is a json
-- [ ] List of all top level packages I actually installed
 
 ---
 
 ## Backup Ideas
-- [ ] Video style generation where you generate slice by slice but condition on previous few slices
+- [ ] If regular 3D train doesn’t work try video type generation where you condition on the previous few slices but still only generate one 2D slice at a time
 - [ ] Biomed parse is 2D parsing
 
 ## Questions
-- [ ] Should segmentation take 20 mins on a single image or something is wrong
-- [ ] Need to understand nodule mapping from segmentation to original image
- - [ ] Did the exams have pixel resampling done? registration?
- - [ ] How should I compare nodules in this case from my generated to the original?
- - [ ] What are the units of volume
- - [ ] What default should I use for clipping during training of HU values
 
-For benny: 'volume': 106.787109375, 'exam': '20808922492012730', Patient ID: 208089
-Only tracked nodule in this exam
+## Evaluation Metrics
+- [ ] Compare ground truth to generation
+- [ ] Compare generation to previous timepoint
+
+
+## Backlog Ideas
+- [ ] Better ODE solver
+- [ ] Try a siren model
+- [ ] detach tensors after every step
+- [ ] 16 bit mixed precision requires custom implementation
+- [ ] Replace flow matching library
+- [ ] Replace lightning
+- [ ] Use .github files from sybil in my autencoder repo to update package
+- [ ] setup.cfg and setup.py
+- [ ] Add in lpips loss to VAE's but might not help because not using visual loss
 
 
 

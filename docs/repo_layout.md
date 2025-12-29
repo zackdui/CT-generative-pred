@@ -32,6 +32,7 @@ CT-generative-pred/
 ├── metadata/
 │   ├── train/                # (.gitignored) This is built locally when running create_parquets script
 │       ├── nlst_full.parquet
+│       ├── nodules_with_fixed_bboxes.parquet
 │       ├── full_data_single_timepoints.parquet
 │       ├── full_data_timelines.parquet
 │       └── full_data_paired_exams.parquet
