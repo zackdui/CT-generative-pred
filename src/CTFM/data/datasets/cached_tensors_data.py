@@ -646,9 +646,22 @@ class CachedNoduleDataset(Dataset):
         max_length: Optional[int] = None,
         return_meta_data: bool = False,
     ):
-        self.full_df = pd.read_parquet(full_data_parquet)
+        self.full_df = pd.read_parquet(full_data_parquet).reset_index(drop=True)
         self.index_df = pd.read_parquet(data_index_parquet)
-        self.full_nodule_df = pd.read_parquet(full_nodule_parquet)
+        self.full_nodule_df = pd.read_parquet(full_nodule_parquet).reset_index(drop=True)
+
+        # valid_exams = set(self.full_nodule_df["exam"].unique())
+        # self.index_df = self.index_df[
+        #                 self.index_df["exam"].isin(valid_exams)
+        #             ].reset_index(drop=True)
+
+        valid_keys = set(
+                            self.full_nodule_df.apply(
+                                lambda r: f"{r['nodule_group']}_{r['exam']}_{int(r['exam_idx'])}",
+                                axis=1
+                            )
+                        )
+        self.index_df = self.index_df[self.index_df["nodule_key"].isin(valid_keys)].reset_index(drop=True)
 
         # Optional split filter
         if split is not None and "split" in self.index_df.columns:
