@@ -1,7 +1,7 @@
 # configs/vae_3d_model.yaml
 
 # Names
-model_name: single_zero_beta.pt
+model_name: all_fixed_beta2.pt
 
 # --- Attention configs ---
 attn_params:
@@ -20,18 +20,20 @@ act:
   - { approximate: none }
 
 # --- CustomVAE core params ---
+fixed_std: .025 #.025 # null for learned std and a float for a fixed std
 vae_latent_channels: 16 # was 128
 debug_mode: false
 upsample_mode: deconv
 init_filters: 64
 smallest_filters: 64 # was 128
-beta: 0
+res_block_weight: .01
+beta: 0 # .1
 vae_use_log_var: true
 use_checkpoint: true
 
 blocks_down:  [1, 1, 2] #[1, 2, 4]
 blocks_up: [1, 1] # [1, 1]
-downsample_strides: [[1,2,2], [2,2,2]] # Strides start after the first block down 
+downsample_strides: [[1,2,2], [2,2,2]] # Strides start after the first block down [[1,2,2], [2,2,2]]
 vae_down_stride: [1,2,2]
 
 # Other configs

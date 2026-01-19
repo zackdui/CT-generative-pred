@@ -11,6 +11,7 @@ encoded_dir_3d: /data/rbg/scratch/nlst_final_encoded/3d
 raw_cached_nodule_dir: /data/rbg/scratch/nlst_nodule_raw_cache
 encoded_cached_nodule_dir: /data/rbg/scratch/nlst_nodule_encoded_cache
 raw_nodule_index: /data/rbg/scratch/nlst_nodule_raw_cache/meta/index.parquet
+encoded_nodule_index: /data/rbg/scratch/nlst_nodule_encoded_cache/meta/index.parquet
 
 # Files
 mapping_registered_exams: /data/rbg/users/duitz/CT-generative-pred/metadata/mapping_registered_exams.pkl

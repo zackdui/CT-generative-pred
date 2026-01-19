@@ -1,0 +1,10 @@
+batch_size: 8
+mode: full # Can also be patch
+patch_size: null
+stride: null
+use_blending: false
+use_wandb: true
+wandb_run_name: eval_3d_vae
+wandb_project_name: evals_3d_vae
+num_examples_to_save: 1
+is_hu: true

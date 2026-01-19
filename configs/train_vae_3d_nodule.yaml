@@ -1,6 +1,6 @@
 # configs/train_vae_random_parts.yaml
 # Names
-train_wandb_name: single2_zero_beta
+train_wandb_name: all_fixed_beta2
 # This is just a suffix; you’re already building:
 # checkpoint_dir=f"{model_name[:-3]}_checkpoints"
 checkpoint_dir_suffix: "_checkpoints"
@@ -16,8 +16,8 @@ patching: null    # null | random_parts | full
 patch_size: [64, 128, 128]
 patches_per_volume: 6
 train_batch: 16
-val_batch: 1
-epochs: 20
+val_batch: 2
+epochs: 140
 train_split: 0.95
 num_workers: 2
 
@@ -28,7 +28,7 @@ amp_dtype: bfloat16   # used only if you turn use_amp on
 # Logging / checkpoints
 use_wandb: true
 wandb_project: vae_real
-save_every_steps: 10
-best_check_every_steps: 20
+save_every_steps: 100
+best_check_every_steps: 50
 
 
