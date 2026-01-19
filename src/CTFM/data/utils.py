@@ -925,6 +925,33 @@ def pad_ZYX(vol_zyx: torch.Tensor, padding, pad_value=0):
 
     return x.squeeze(0).squeeze(0)  # back to (Z,Y,X)
 
+def recover_small_bbox(tight_bbox, image_shape, goal_size=(128,128,32)):
+    """
+    Given the original bounding box coordinates and the image_shape and the goal size of the 
+    patches recover the original bounding box in the patches.
+    """
+    updated_bbox, padding = bbox_padded_coords(tight_bbox, image_shape, goal_size)
+
+    ui0, ui1, uj0, uj1, uk0, uk1 = updated_bbox
+    ti0, ti1, tj0, tj1, tk0, tk1 = tight_bbox
+
+    # shift volume coords -> cropped (unpadded) patch coords
+    ti0, ti1 = ti0 - ui0, ti1 - ui0
+    tj0, tj1 = tj0 - uj0, tj1 - uj0
+    tk0, tk1 = tk0 - uk0, tk1 - uk0
+
+    # shift cropped coords -> padded_patch coords (add left padding)
+    pi0, _ = padding["i"]  # i is Y
+    pj0, _ = padding["j"]  # j is X
+    pk0, _ = padding["k"]  # k is Z
+
+    return (
+        ti0 + pi0, ti1 + pi0,
+        tj0 + pj0, tj1 + pj0,
+        tk0 + pk0, tk1 + pk0,
+    )
+
+
 def save_slices(
     volume: Union[np.ndarray, torch.Tensor],
     slice_indices: Optional[Iterable[int]] = None,
@@ -1068,6 +1095,8 @@ def save_montage(
     """
     if len(volume.shape) == 4:
         volume = volume.squeeze(0)
+    if torch.is_tensor(volume) and volume.is_cuda:
+        volume = volume.detach().to(dtype=torch.float32).cpu()
         
     Z = volume.shape[0]
     slice_indices = [int(k) for k in slice_indices if 0 <= int(k) < Z]
@@ -1088,7 +1117,11 @@ def save_montage(
     for idx, k in enumerate(slice_indices):
         r, c = divmod(idx, ncols)
         ax = axes[r, c]
-        ax.imshow(volume[k], cmap=cmap, vmin=vmin, vmax=vmax)
+        slice_ = volume[k]
+
+        if torch.is_tensor(slice_):
+            slice_ = slice_.numpy()
+        ax.imshow(slice_, cmap=cmap, vmin=vmin, vmax=vmax)
         ax.axis("off")
         if show_slice_labels:
             ax.set_title(f"z={k}", fontsize=10)
