@@ -9,6 +9,7 @@ from tqdm import tqdm
 
 from .utils import collate_image_meta
 from .datasets.CT_orig_data import CTOrigDataset2D, CTOrigDataset3D, CTNoduleDataset3D
+from .datasets.cached_tensors_data import CachedNoduleDataset
 
 def compute_completed_2d_exams(
     dataset_parquet: Union[str, Path],
@@ -489,8 +490,17 @@ def encode_and_cache_nodule(
     tmp_parquet = meta_dir / f"dataset_r{global_rank:02d}.parquet"
     df_rank.to_parquet(tmp_parquet, index=False)
 
-    dataset = CTNoduleDataset3D(parquet_path_full, tmp_parquet, force_patch_size=force_patch_size, max_nodule_cache_size=10, max_volume_cache_size=20)
-
+    if not do_encode:
+        dataset = CTNoduleDataset3D(parquet_path_full, tmp_parquet, force_patch_size=force_patch_size, max_nodule_cache_size=10, max_volume_cache_size=20)
+    else:
+        dataset = CachedNoduleDataset(parquet_path_full, 
+                                      tmp_parquet, 
+                                      "/data/rbg/scratch/nlst_nodule_raw_cache/meta/index.parquet", 
+                                      "/data/rbg/scratch/nlst_nodule_raw_cache", 
+                                      split=split,
+                                      max_length=None,
+                                      max_cache_size=20,
+                                      return_meta_data=True)
     os.remove(tmp_parquet)  # clean up
 
     loader = DataLoader(
