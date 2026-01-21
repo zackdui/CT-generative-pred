@@ -46,6 +46,7 @@ def window_ct_hu_to_png(
     center: float = -600.0,
     width: float = 1500.0,
     bit_depth: int = 8,
+    return_float: bool = False,
 ) -> torch.Tensor:
     """
     Apply DICOM-compliant windowing to a CT HU tensor and map to [0, 2^bit_depth - 1].
@@ -59,6 +60,8 @@ def window_ct_hu_to_png(
             Window width, in HU.
         bit_depth: int
             Output bit depth (default 8 → range [0, 255] for PNG).
+        return_float: bool
+            If True, return a float tensor instead of uint8. It will never be converted to uint8
 
     Returns:
         torch.Tensor (dtype=torch.uint8)
@@ -97,11 +100,14 @@ def window_ct_hu_to_png(
     out[above] = y_max
 
     # Linear mapping for in-window values
-    if between.any():
+    if between.any().item(): #Added .item() later
         out[between] = ((hu[between] - c) / w + 0.5) * y_range + y_min
 
-    # Clamp just in case of numeric fuzz and cast to uint8
-    out = out.clamp(y_min, y_max).round().to(torch.uint8)
+    if not return_float:
+        # Clamp just in case of numeric fuzz and cast to uint8
+        out = out.clamp(y_min, y_max).round().to(torch.uint8)
+    else:
+        out = out.clamp(y_min, y_max).float()
     return out
 
 def prepare_for_wandb_hu(slice_2d, window = [-2000, 500], center: float = -600.0, width: float = 1500.0):
