@@ -5,9 +5,11 @@ from lightning.pytorch.loggers import WandbLogger
 import wandb
 from torch import tensor
 import torch
+import torch.nn as nn
 from torch import Tensor
 import numpy as np
 import matplotlib.pyplot as plt
+from typing import Type
 from ..data import (reverse_normalize, 
                     save_slices, 
                     save_side_by_side_slices, 
@@ -16,11 +18,12 @@ from ..data import (reverse_normalize,
                     save_montage)
 from ..utils import window_ct_hu_to_png, prepare_for_wandb_hu, prepare_for_wandb, volume_to_gif_frames
 
-
+import time
 
 class UnetLightning3D(pl.LightningModule):
     def __init__(self, 
-                 model, 
+                 unet_cls: Type[nn.Module], 
+                 model_hyperparameters,
                  paired_input=False,
                  lr=.001, 
                  sigma = 0.1, 
@@ -50,8 +53,10 @@ class UnetLightning3D(pl.LightningModule):
             convert_from_hu: bool = True - If the images will originally be in hu values that need to be converted
         """
         super().__init__()
-        self.save_hyperparameters(ignore=['model'])
-        self.model = model
+        self.save_hyperparameters(ignore=['unet_cls', 'decode_model', 'dummy_image'])
+        self.model = unet_cls(**model_hyperparameters)
+        model_parameters = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
+        print(f"Number of trainable parameters in model: {model_parameters}")
         self.paired_input = paired_input
         if self.paired_input:
             self.FM = ConditionalFlowMatcher(sigma=sigma)
@@ -131,10 +136,10 @@ class UnetLightning3D(pl.LightningModule):
             x1 = image_data[:, self.input_channels:, :, :, :]
         else:
             x1 = image_data
-            # x0 = torch.randn_like(x1)
-            if self.fixed_noise is None:
-                self.fixed_noise = torch.randn_like(x1).detach()
-            x0 = self.fixed_noise
+            x0 = torch.randn_like(x1)
+            # if self.fixed_noise is None:
+            #     self.fixed_noise = torch.randn_like(x1).detach()
+            # x0 = self.fixed_noise
         t, xt, ut = self.FM.sample_location_and_conditional_flow(x0, x1)
         if self.debug_flag:
             # CUDA event timing (accurate)
@@ -158,9 +163,9 @@ class UnetLightning3D(pl.LightningModule):
 
         
         lr = self.trainer.optimizers[0].param_groups[0]["lr"]
-        self.log("lr/current", lr, on_step=True, logger=True, prog_bar=False, sync_dist=True)
-        self.log("step_train_loss", loss, on_step=True, on_epoch=False, prog_bar=True, logger=True, sync_dist=False)
-        self.log("train_loss", loss, on_step=False, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
+        self.log("lr/current", lr, on_step=True, logger=True, prog_bar=False, sync_dist=False)
+        self.log("step_train_loss", loss.detach().float(), on_step=True, on_epoch=False, prog_bar=True, logger=True, sync_dist=False)
+        self.log("train_loss", loss.detach().float(), on_step=False, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
 
         return loss
         
@@ -196,7 +201,7 @@ class UnetLightning3D(pl.LightningModule):
         """
         t_vec = torch.linspace(0, 1, n_steps+1, device=x_input.device)
         x_t = x_input
-        x_t = self.fixed_noise
+        # x_t = self.fixed_noise
         B = x_t.shape[0]
 
         for idx, t0 in enumerate(t_vec[:-1]):
@@ -217,7 +222,8 @@ class UnetLightning3D(pl.LightningModule):
         Note: currently ignores x_input and starts from self.fixed_noise like your code.
         """
         # Start state
-        x_t = self.fixed_noise  # shape (B, C, D, H, W)
+        # x_t = self.fixed_noise  # shape (B, C, D, H, W)
+        x_t = x_input
         B = x_t.shape[0]
 
         t_vec = torch.linspace(0.0, 1.0, n_steps + 1, device=x_t.device, dtype=x_t.dtype)
@@ -249,7 +255,8 @@ class UnetLightning3D(pl.LightningModule):
 
         Note: currently ignores x_input and starts from self.fixed_noise like your code.
         """
-        x_t = self.fixed_noise
+        # x_t = self.fixed_noise
+        x_t = x_input
         B = x_t.shape[0]
 
         t_vec = torch.linspace(0.0, 1.0, n_steps + 1, device=x_t.device, dtype=x_t.dtype)
@@ -354,12 +361,19 @@ class UnetLightning3D(pl.LightningModule):
 
                 safe_delete(target_mp4_path)
 
+                fig3 = save_montage(target_dhw, out_path=None, save_fig=False, return_fig=True)
+                self._wandb_exp.log({
+                    "images/targets_montage": wandb.Image(fig3),
+                }, step=self.global_step)
+                plt.close(fig3)
     
     def save_predictions(self, x0, x1, output_dir: str, prefix: str):
         if self.paired_input:
             x_input = x0[:self.num_val_images]
+            x_target = x1[:self.num_val_images]
         else:
             x_input = torch.randn(self.num_val_images, x1.shape[1], x1.shape[2], x1.shape[3], x1.shape[4]).to(x1.device)
+            x_target = None
 
         x_output = self.generate_images(x_input)
 
@@ -368,18 +382,23 @@ class UnetLightning3D(pl.LightningModule):
         if self.decode_model is not None:
             with torch.no_grad():
                 images = self.decode_model.decode(images)
-            if self.paired_input:
                 x_input = self.decode_model.decode(x_input)
+                if self.paired_input:
+                    x_target = self.decode_model.decode(x_target)
 
         images = images.clip(-1, 1)
-        self.save_wandb(x_input, images, x1 if self.paired_input else None)
+        x_input = x_input.clip(-1, 1)
+
+        # torch.cuda.synchronize()  # ensure previous CUDA ops finish
+        # t0 = time.perf_counter()
+
+        self.save_wandb(x_input, images, x_target if self.paired_input else None)
+
+        # torch.cuda.synchronize()  # ensure save_wandb CUDA work finishes
+        # dt = time.perf_counter() - t0
+
+        # print(f"[timing] save_wandb took {dt:.3f}s")
         for i, (input_img, output_img) in enumerate(zip(x_input, images)):
-            # Save the input images and decode them if it is a real image
-            if self.paired_input and self.decode_model is not None:
-                with torch.no_grad():
-                    input_img = self.decode_model.decode(input_img.unsqueeze(0))
-                input_img = input_img.squeeze(0)
-                input_img = input_img.clip(-1, 1)
             if self.convert_from_hu:
                 input_img_hu = reverse_normalize(input_img, clip_window=(-2000, 500))
                 input_img = window_ct_hu_to_png(input_img_hu, center=-600, width=1500, bit_depth=8)
@@ -398,11 +417,7 @@ class UnetLightning3D(pl.LightningModule):
             save_side_by_side_slices(input_slices, output_slices, output_dir=output_dir, prefix=f"{prefix}_sample_{i}_input_vs_output")
             # Save the target images if paired input
             if self.paired_input:
-                target_img = x1[i]
-                if self.decode_model is not None:
-                    with torch.no_grad():
-                        target_img = self.decode_model.decode(target_img.unsqueeze(0))
-                    target_img = target_img.squeeze(0)
+                target_img = x_target[i]
                 target_img = target_img.clip(-1, 1)
                 if self.convert_from_hu:
                     target_img_hu = reverse_normalize(target_img, clip_window=(-2000, 500))
@@ -432,7 +447,7 @@ class UnetLightning3D(pl.LightningModule):
         t, xt, ut = self.FM.sample_location_and_conditional_flow(x0, x1)
         vt = self(xt, t)
         val_loss = torch.mean((vt - ut) ** 2)
-        self.log("val_loss", val_loss, on_step=False, on_epoch=True, prog_bar=False, logger=True, sync_dist=True)
+        self.log("val_loss", val_loss.detach().float(), on_step=False, on_epoch=True, prog_bar=False, logger=True, sync_dist=True)
 
         # Now save the output of the model on a test image
         # Only want return the evaluation image on the first gpu
@@ -440,11 +455,18 @@ class UnetLightning3D(pl.LightningModule):
             return val_loss
         # Only save on the first batch of each epoch. Sanity checking is to avoid saving on the sanity check
         if not self.trainer.sanity_checking and batch_idx == 0:
+            # print("Starting predictions")
+            # torch.cuda.synchronize()  # ensure previous CUDA ops finish
+            # t0 = time.perf_counter()
             self.save_predictions(x0, x1, output_dir=self.validation_path, prefix=f"validation_step={global_step}_rank={rank}")
+
+            # torch.cuda.synchronize()  # ensure save_wandb CUDA work finishes
+            # dt = time.perf_counter() - t0
+
+            # print(f"Prediction [timing] save_wandb took {dt:.3f}s")
        
         return val_loss
-        
-    
+        s
     def test_step(self, batch, batch_idx):
         image_data, meta_data = batch
         if self.paired_input:
