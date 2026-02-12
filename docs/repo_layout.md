@@ -27,6 +27,7 @@ CT-generative-pred/
 │   ├── train_vae_3d_nodule.yaml
 │   ├── train_vae_3d.yaml
 │   ├── unet_2d_cfm.yaml
+│   ├── unet_3d_cfm_raw.yaml
 │   ├── unet_3d_cfm.yaml
 │   └── vae_3d_model.yaml
 │

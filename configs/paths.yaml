@@ -10,8 +10,11 @@ encoded_dir_2d: /data/rbg/scratch/nlst_final_encoded/2d
 encoded_dir_3d: /data/rbg/scratch/nlst_final_encoded/3d
 raw_cached_nodule_dir: /data/rbg/scratch/nlst_nodule_raw_cache
 encoded_cached_nodule_dir: /data/rbg/scratch/nlst_nodule_encoded_cache
+# There is an additional index just for testing as the regular one was corrupted
+encoded_nodule_test_dir: /data/rbg/scratch/test_nlst_nodule_encoded_cache
 raw_nodule_index: /data/rbg/scratch/nlst_nodule_raw_cache/meta/index.parquet
 encoded_nodule_index: /data/rbg/scratch/nlst_nodule_encoded_cache/meta/index.parquet
+encoded_nodule_test_index: /data/rbg/scratch/test_nlst_nodule_encoded_cache/meta/index.parquet
 
 # Files
 mapping_registered_exams: /data/rbg/users/duitz/CT-generative-pred/metadata/mapping_registered_exams.pkl
@@ -19,6 +22,8 @@ nodule_tracked_file: /data/rbg/users/pgmikhael/current/SybilX/notebooks/NLSTNodu
 nodule_tracked_parquet: /data/rbg/users/duitz/CT-generative-pred/metadata/nlst_nodule_tracking.parquet
 saved_transforms_file: /data/rbg/users/duitz/CT-generative-pred/metadata/exam_to_nifti_transformed.pkl
 vae_3d_checkpoint_path: placeholder_for_3d_vae_checkpoint_path.pt
+test_small_bboxes_raw: /data/rbg/users/duitz/CT-generative-pred/metadata/test_raw_data_nodule_original_boxes.json
+test_small_bboxes_encoded: /data/rbg/users/duitz/CT-generative-pred/metadata/test_encoded_data_nodule_original_boxes.json
 
 
 # Root for the shared NLST JSON / PNG / annotations

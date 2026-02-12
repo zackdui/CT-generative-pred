@@ -1,0 +1,13 @@
+# ---- model hyperparameters (UNet) ----
+spatial_dims: 3
+in_channels: 1
+out_channels: 1
+channels: [16, 32, 64]
+num_res_blocks: [2, 3, 3]
+resblock_updown: true
+attention_levels: [false, false, false]
+# use_flash_attention: true
+num_head_channels: 64
+norm_num_groups: 8
+
+
