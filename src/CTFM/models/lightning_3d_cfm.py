@@ -466,7 +466,7 @@ class UnetLightning3D(pl.LightningModule):
             # print(f"Prediction [timing] save_wandb took {dt:.3f}s")
        
         return val_loss
-        s
+        
     def test_step(self, batch, batch_idx):
         image_data, meta_data = batch
         if self.paired_input:
