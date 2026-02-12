@@ -929,6 +929,8 @@ def recover_small_bbox(tight_bbox, image_shape, goal_size=(128,128,32)):
     """
     Given the original bounding box coordinates and the image_shape and the goal size of the 
     patches recover the original bounding box in the patches.
+
+    Returned in the same order as the input. (y_min, y_max, x_min, x_max, z_min, z_max)
     """
     updated_bbox, padding = bbox_padded_coords(tight_bbox, image_shape, goal_size)
 
@@ -1144,4 +1146,43 @@ def save_montage(
         fig.savefig(out_path, bbox_inches="tight", dpi=200)
     if return_fig:
         return fig
+    plt.close(fig)
+
+def save_two_figs_side_by_side(fig_left, fig_right, out_path, dpi=200, title=None, subtitle_1 = None, subtitle_2=None):
+    """
+    Takes two matplotlib Figures and saves them side-by-side as one image.
+    """
+    # Draw canvases so sizes are known
+    fig_left.canvas.draw()
+    fig_right.canvas.draw()
+
+    # Get pixel sizes
+    w1, h1 = fig_left.canvas.get_width_height()
+    w2, h2 = fig_right.canvas.get_width_height()
+
+    # Create combined figure
+    fig, axes = plt.subplots(
+        1, 2,
+        figsize=((w1 + w2) / dpi, max(h1, h2) / dpi),
+        dpi=dpi
+    )
+
+    axes[0].imshow(fig_left.canvas.buffer_rgba())
+    axes[1].imshow(fig_right.canvas.buffer_rgba())
+
+    for ax in axes:
+        ax.axis("off")
+
+    if title is not None:
+        fig.suptitle(title, fontsize=18, y=0.98)
+
+        if subtitle_1 is not None:
+            axes[0].set_title(subtitle_1, fontsize=12)
+        if subtitle_2 is not None:
+            axes[1].set_title(subtitle_2, fontsize=12)
+
+        # Important so the title doesn't get clipped
+        fig.tight_layout(rect=[0, 0, 1, 0.95])
+
+    fig.savefig(out_path, bbox_inches="tight", dpi=dpi)
     plt.close(fig)
