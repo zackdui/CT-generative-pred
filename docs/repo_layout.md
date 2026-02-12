@@ -18,6 +18,7 @@ CT-generative-pred/
 ├── .gitignore
 │
 ├── configs/
+│   ├── eval_3d_vae.yaml
 │   ├── fm_3d_paired.yaml
 │   ├── fm_3d_pretraining.yaml
 │   ├── nlst_large.yaml
@@ -33,6 +34,7 @@ CT-generative-pred/
 │   ├── train/                # (.gitignored) This is built locally when running create_parquets script
 │       ├── nlst_full.parquet
 │       ├── nodules_with_fixed_bboxes.parquet
+│       ├── paired_nodules.parquet
 │       ├── full_data_single_timepoints.parquet
 │       ├── full_data_timelines.parquet
 │       └── full_data_paired_exams.parquet
@@ -50,14 +52,18 @@ CT-generative-pred/
 ├── scripts/
 │   ├── eval_2D_fm.py
 │   ├── eval_3D_fm.py
+│   ├── eval_3d_vae.py
+│   ├── model_diagram_save.py
 │   ├── nodules_pt_to_parquet.py
 │   ├── pretraining_2D_fm.py
 │   ├── pretraining_3D_fm.py
 │   ├── run_create_parquets.py
 │   ├── save_encoded_images.py
 │   ├── save_mapping.py
-│   ├── save_nodule_cache.py
+│   ├── save_nodule_cache.pys
 │   ├── save_registrations.py
+│   ├── save_small_bboxes_encoded.py
+│   ├── save_small_bboxes.py
 │   ├── train_pairs_2D_fm.py
 │   ├── train_pairs_3D_fm.py
 │   ├── train_vae_3d_nodules.py
@@ -95,6 +101,7 @@ CT-generative-pred/
 │           ├── data_size.py
 │           ├── pixel_conversions.py
 │           └── plot_lr.py
+├── model_images/ 
 ├── final_saved_models/        # (.gitignored - maybe) Saved final models after training
 └── experiments/              # logs, checkpoints, outputs (gitignored)
     ├── fm_2d_paired/

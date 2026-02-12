@@ -22,3 +22,7 @@ diffusers
 matplotlib
 tqdm
 wandb
+itk
+monai
+connected-components-3d
+lungmask

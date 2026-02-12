@@ -288,3 +288,17 @@ Same as `nlst_nodule_tracking.parquet`, with additional fields for the bounding 
 **Row granularity:** One row per *pair of physical nodules* for the same patient. Order will be earlier exam nodule first, later exam nodule second.
 
 All the same categories as `nodules_with_fixed_bboxes.parquet` except the collumns will have the suffix _a or _b depending on if it is the earlier exam nodule or later exam nodule. Besides for pid and nodule_group which are not suffixed.
+
+## Extra Bounding Boxes
+**File name:** `test_raw_data_nodule_original_boxes.json`
+
+**Row granularity:** Each row represents a single nodule. It is keyed by nodule-group_exam-id_exam_idx. (Be careful about exam-id there are two versions of it).
+
+**Fields**
+* `bbox` The small bbox around the nodule in the nodule image space, as `[y_min, y_max, x_min, x_max, z_min, z_max]`.
+* `bbox_interp` The interpolated bbox around the nodule in the nodule image space, as `[y_min, y_max, x_min, x_max, z_min, z_max]`.
+* `nodule_volume` The volume of the nodule in mm³ according to the segmentor directly on them.
+
+**File name** `test_encoded_data_nodule_original_boxes.json`
+
+**Additional Information** This is the same as above except for the encoded and then decoded versions.

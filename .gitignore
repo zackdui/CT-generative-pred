@@ -45,13 +45,22 @@ saved_old_files/
 test_data/
 scripts/tester_script.py
 scripts/tester_script2.py
+scripts/test_dat.py
+scripts/test_eval_fm.py
+scripts/test_volumes.py
 metadata/train/
 metadata/val/
 metadata/test/
 test_bbox/
 test_bbox*/
+test_image_stuff/
+test_saved_images/
 old_metadata/
 metadata/nifti_creation_log.jsonl
 experiments/
+code_experiments/
+final_saved_models_training/
+test*
+
 
 

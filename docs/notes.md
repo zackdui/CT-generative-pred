@@ -10,6 +10,7 @@
 ### 1.1 Data structure
 - Original HU clipping is -1350, + 150
 - My range -2000, 500 because contains 98% of the points. If I used -2000, 160 it would cover 90%
+- There was some issue with the cached encoded test set and therefore there is a path with another corrected version
 
 ---
 
