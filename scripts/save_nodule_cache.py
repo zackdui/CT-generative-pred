@@ -1,4 +1,4 @@
-import o
+import os
 from vae3d2d import CustomVAE
 
 from CTFM.utils import load_config
@@ -29,7 +29,7 @@ if __name__ == "__main__":
         output_dir = base_paths.raw_cached_nodule_dir
     else:
         output_dir = base_paths.encoded_cached_nodule_dir
-        output_dir = "/data/rbg/scratch/test_nlst_nodule_encoded_cache/"
+        # output_dir = "/data/rbg/scratch/test_nlst_nodule_encoded_cache/"
 
     if save_paired_nodule_parquet:
         direc = os.path.dirname(bounding_boxes_parquet_path)
