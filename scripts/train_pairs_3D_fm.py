@@ -19,7 +19,8 @@ from CTFM.data import (CachedNoduleDataset,
                        RepeatedImageDataset, 
                        save_slices, 
                        collate_image_meta, 
-                       reverse_normalize)
+                       reverse_normalize,
+                       save_montage)
 from CTFM.utils import (plot_lr_from_metrics, 
                         plot_loss_from_metrics, 
                         load_config, 
@@ -35,7 +36,8 @@ def main(model_checkpoint, # Can be None
          test_dataset, 
          run_output_dir, 
          decode_model=None,
-         single_image=False):
+         single_image=False,
+         repeat_count=20000):
 
     debug_flag = training_args.debug_flag
     train_batch_size = training_args.train_batch_size
@@ -51,34 +53,39 @@ def main(model_checkpoint, # Can be None
     val_loader = DataLoader(val_dataset, batch_size=train_batch_size, shuffle=True, num_workers=2, collate_fn=collate_image_meta)
     test_loader = DataLoader(test_dataset, batch_size=test_batch_size, shuffle=False, collate_fn=collate_image_meta)
 
+    ## Model Creation ##
+    unet_3d_cfm_configs = load_config(unet_3d_cfm)
 
     ####### For Single Image Training ########
     if single_image:
-        import pdb; pdb.set_trace()
-        image = train_dataset[0][0]
-        image_in = train_dataset[0][:unet_3d_cfm_configs.in_channels]
-        image_out = train_dataset[0][unet_3d_cfm_configs.in_channels:]
-        meta_data = train_dataset[0][0]
-        repeat_count = 20000
-        train_dataset = RepeatedImageDataset(image, repeat_count, meta_data=meta_data)
-        val_dataset = RepeatedImageDataset(image, 4, meta_data=meta_data)
+        # import pdb; pdb.set_trace()
+        image_both = train_dataset[0][0]
+        image_in = train_dataset[0][0][:unet_3d_cfm_configs.in_channels]
+        image_out = train_dataset[0][0][unet_3d_cfm_configs.in_channels:]
+        meta_data = train_dataset[0][1]
+        train_dataset = RepeatedImageDataset(image_both, repeat_count, meta_data=meta_data)
+        val_dataset = RepeatedImageDataset(image_both, 4, meta_data=meta_data)
         train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True, num_workers=0, collate_fn=collate_image_meta)
         val_loader = DataLoader(val_dataset, batch_size=2, shuffle=False, num_workers=0, collate_fn=collate_image_meta)
         if decode_model is not None:
             decode_model.eval()
             with torch.no_grad():
                 decode_model = decode_model.to('cuda')
-                out_image = decode_model.decode(image.unsqueeze(0).to(next(decode_model.parameters()).device))
-                image = out_image.squeeze(0)
-        reverse_normalized_image = reverse_normalize(image.cpu())
+                image_out = decode_model.decode(image_out.unsqueeze(0).to(next(decode_model.parameters()).device))
+                image_in = decode_model.decode(image_in.unsqueeze(0).to(next(decode_model.parameters()).device))
+                image_out = image_out.squeeze(0)
+                image_in = image_in.squeeze(0)
+        reverse_normalized_image = reverse_normalize(image_out.cpu())
         image_to_save = window_ct_hu_to_png(reverse_normalized_image, center=-600.0, width=1500.0, bit_depth=8)
+        reverse_normalized_image_in = reverse_normalize(image_in.cpu())
+        image_to_save_in = window_ct_hu_to_png(reverse_normalized_image_in, center=-600.0, width=1500.0, bit_depth=8)
         single_image_output_dir = os.path.join(run_output_dir, "single_image_example")
         os.makedirs(single_image_output_dir, exist_ok=True)
         save_slices(image_to_save, output_dir=single_image_output_dir, prefix="single_image_goal_")
+        save_slices(image_to_save_in, output_dir=single_image_output_dir, prefix="single_image_input_")
+        save_montage(image_to_save, out_path=os.path.join(single_image_output_dir, "single_image_goal_montage.png"))
+        save_montage(image_to_save_in, out_path=os.path.join(single_image_output_dir, "single_image_input_montage.png"))
     ##################################
-
-    ## Model Creation ##
-    unet_3d_cfm_configs = load_config(unet_3d_cfm)
 
     torch.backends.cuda.matmul.allow_tf32 = True
     torch.backends.cudnn.allow_tf32 = True
@@ -103,8 +110,10 @@ def main(model_checkpoint, # Can be None
         light_model = UnetLightning3D.load_from_checkpoint(
                                                     model_checkpoint,
                                                     unet_cls=DiffusionModelUNet,
+                                                    decode_model=decode_model,
                                                     strict=False, 
-                                                    paired_input=True,  
+                                                    paired_input=True,
+                                                    output_dir=run_output_dir  
                                                 )
 
     ## Loggers and Callbacks ##
@@ -229,10 +238,11 @@ def create_datasets(base_paths, encoded_data=False):
 
 if __name__ == "__main__":
     single_image = False  # set to True to train on a single image repeated
+    repeat_count = 20000
     path_yaml = "configs/paths.yaml"
     training_configs = "configs/fm_3d_paired.yaml"
     unet_3d_cfm = "configs/unet_3d_cfm.yaml"
-    encode_data = True
+    encode_data = False
     decode_model_checkpoint = "/data/rbg/users/duitz/CT-generative-pred/final_saved_models/vae_fixed_std_no_reg.pt"
     pretrained_model_checkpoint = None # "/data/rbg/users/duitz/CT-generative-pred/experiments/fm_3d_pretrain/full_latent/lightning_logs/version_1/checkpoints/val-epoch=429-val_loss=0.32.ckpt"
 
@@ -261,6 +271,6 @@ if __name__ == "__main__":
 
     train_dataset, val_dataset, test_dataset = create_datasets(base_paths, encoded_data=encode_data)
 
-    main(pretrained_model_checkpoint, training_args, unet_3d_cfm, train_dataset, val_dataset, test_dataset, run_output_dir, decode_model=decode_model, single_image=single_image)
+    main(pretrained_model_checkpoint, training_args, unet_3d_cfm, train_dataset, val_dataset, test_dataset, run_output_dir, decode_model=decode_model, single_image=single_image, repeat_count=repeat_count)
 
 
