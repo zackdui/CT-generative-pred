@@ -1,28 +1,18 @@
 # TODO
 
+## Final Experiments I really want to run
+- [ ] Flow matching on images themselves not encoded (32, 128, 128)
+- [ ] Flow matching on images themselves not encoded (16, 64, 64)
+- [ ] Encoded post training without time
+- [ ] Encoded post training with time
+- [ ] Loss that sometimes only takes into account the region with the nodule
+- [ ] Try Eagle loss for the encoder
+- [ ] Implement the additional time component that I want to embed and try concatenation vs adding for the flow matching model because I will need it to be evaluated
+- [ ] run 2d generation again
 
-## Currently Working On
-
-Add aditional eval on the finished model for VAE
-finish the 3D flow matching training script for unpaired and paired training
-Need a wandb eval for 3D flow matching training script
-
-Set up EMA weights for inference
-
-Remove 2D from process.md doc if never run it
-
-## Full Files to write
-- [ ] 3D FM pretraining script
-- [ ] 3D FM paired training script
-- [ ] 2D FM paired script
-- [ ] 2D evaluation script
-- [ ] 3D evaluation script
-- [ ] 2D VAE finetuning script
-- [ ] 3D autencoder eval which also should be worked on in VAE to update to the training script
+---
 
 ## Data
-
-- [ ] Check same Z value when loading a pair after processing full volume
 - [ ] Check reconstruction quality of an actual nodule from autoencoders in 2D
 - [ ] Check 2D autoencoding in HU space and then bringing it back after for visualization
 
@@ -38,7 +28,22 @@ Remove 2D from process.md doc if never run it
 ---
 
 ## 3D VAE Improvements and Tests
+- [ ] Try more steps for training
+- [ ] Try different init sampler
+- [ ] Try bigger weight on resblock part
+- [ ] Try rms normalization
+- [ ] Try silu activation
+- [ ] Try both VAE losses, check on magnitudes of both
+- [ ] Try removing the tanh output at the final layer
+- [ ] VAE small beta rms normalization
+- [ ] VAE single large beta large latent
+- [ ] Vae single large beta only 2 downs
 
+## Final VAE Model goals
+- [ ] Best regular AE
+- [ ] Best VAE learned variance
+- [ ] Best fixed variance with L2 Regularization
+- [ ] Best fixed variance without regularization
 ---
 
 ## Evaluation
@@ -70,20 +75,26 @@ Remove 2D from process.md doc if never run it
 
 ---
 
+## Questions
+
+---
+
 ## Docs
+
+---
+
+## Evaluation Metrics
+- [ ] Compare ground truth to generation
+- [ ] Compare generation to previous timepoint
+
+## Finishing Touches
+- [ ] Remove 2D from process.md doc if never run it
 
 ---
 
 ## Backup Ideas
 - [ ] If regular 3D train doesn’t work try video type generation where you condition on the previous few slices but still only generate one 2D slice at a time
 - [ ] Biomed parse is 2D parsing
-
-## Questions
-
-## Evaluation Metrics
-- [ ] Compare ground truth to generation
-- [ ] Compare generation to previous timepoint
-
 
 ## Backlog Ideas
 - [ ] Better ODE solver
@@ -95,6 +106,8 @@ Remove 2D from process.md doc if never run it
 - [ ] Use .github files from sybil in my autencoder repo to update package
 - [ ] setup.cfg and setup.py
 - [ ] Add in lpips loss to VAE's but might not help because not using visual loss
+- [ ] Set up EMA weights for inference
+- [ ] 2D VAE finetuning script
 
 
 
