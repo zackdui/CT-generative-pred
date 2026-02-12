@@ -1,3 +1,5 @@
+# This is a placeholder script with a useful way to load the model
+
 # model = UNetModel(
     #     image_size=512,
     #     in_channels=1,           # grayscale images
@@ -10,6 +12,7 @@
     #     attention_resolutions=[32, 16],  
     # )
     # test_model = UnetLightning.load_from_checkpoint(best_path, model=model)
+    # test_model.paired_loader = True
     # trainer.test(model=test_model, dataloaders=test_loader) #, ckpt_path="best")
 ##################################
 
