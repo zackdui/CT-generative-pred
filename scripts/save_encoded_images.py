@@ -30,7 +30,6 @@ def run_encode(dataset_parquet: str,
         num_workers=2,
         shard_size=200,
         device="cuda",
-        overwrite=False,
         rank=int(os.environ.get("RANK", "0")),
     )
 
