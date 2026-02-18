@@ -37,7 +37,8 @@ def main(model_checkpoint, # Can be None
          run_output_dir, 
          decode_model=None,
          single_image=False,
-         repeat_count=20000):
+         repeat_count=20000,
+         train_bboxes=None):
 
     debug_flag = training_args.debug_flag
     train_batch_size = training_args.train_batch_size
@@ -105,7 +106,7 @@ def main(model_checkpoint, # Can be None
         )
 
     if model_checkpoint is None:
-        light_model = UnetLightning3D(DiffusionModelUNet, unet_kwargs, paired_input=True, lr=lr, output_dir=run_output_dir, input_channels=unet_3d_cfm_configs.in_channels, decode_model=decode_model, img_size=training_args.img_size)
+        light_model = UnetLightning3D(DiffusionModelUNet, unet_kwargs, paired_input=True, lr=lr, output_dir=run_output_dir, input_channels=unet_3d_cfm_configs.in_channels, decode_model=decode_model, img_size=training_args.img_size, bbox_file=train_bboxes)
     else:
         light_model = UnetLightning3D.load_from_checkpoint(
                                                     model_checkpoint,
@@ -113,7 +114,8 @@ def main(model_checkpoint, # Can be None
                                                     decode_model=decode_model,
                                                     strict=False, 
                                                     paired_input=True,
-                                                    output_dir=run_output_dir  
+                                                    output_dir=run_output_dir,
+                                                    bbox_file=train_bboxes
                                                 )
 
     ## Loggers and Callbacks ##
@@ -241,10 +243,12 @@ if __name__ == "__main__":
     repeat_count = 20000
     path_yaml = "configs/paths.yaml"
     training_configs = "configs/fm_3d_paired.yaml"
-    unet_3d_cfm = "configs/unet_3d_cfm.yaml"
+    # unet_3d_cfm = "configs/unet_3d_cfm.yaml"
+    unet_3d_cfm = "configs/unet_3d_cfm_raw.yaml"
     encode_data = False
-    decode_model_checkpoint = "/data/rbg/users/duitz/CT-generative-pred/final_saved_models/vae_fixed_std_no_reg.pt"
+    decode_model_checkpoint = None # "/data/rbg/users/duitz/CT-generative-pred/final_saved_models/vae_fixed_std_no_reg.pt"
     pretrained_model_checkpoint = None # "/data/rbg/users/duitz/CT-generative-pred/experiments/fm_3d_pretrain/full_latent/lightning_logs/version_1/checkpoints/val-epoch=429-val_loss=0.32.ckpt"
+    train_bboxes = "/data/rbg/users/duitz/CT-generative-pred/metadata/train_raw_data_nodule_original_boxes.json"
 
     base_paths = load_config(path_yaml)
     training_args = load_config(training_configs)
@@ -271,6 +275,16 @@ if __name__ == "__main__":
 
     train_dataset, val_dataset, test_dataset = create_datasets(base_paths, encoded_data=encode_data)
 
-    main(pretrained_model_checkpoint, training_args, unet_3d_cfm, train_dataset, val_dataset, test_dataset, run_output_dir, decode_model=decode_model, single_image=single_image, repeat_count=repeat_count)
+    main(pretrained_model_checkpoint, 
+         training_args, 
+         unet_3d_cfm, 
+         train_dataset, 
+         val_dataset, 
+         test_dataset, 
+         run_output_dir, 
+         decode_model=decode_model, 
+         single_image=single_image, 
+         repeat_count=repeat_count, 
+         train_bboxes=train_bboxes)
 
 

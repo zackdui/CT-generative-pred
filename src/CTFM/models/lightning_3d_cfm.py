@@ -10,6 +10,7 @@ from torch import Tensor
 import numpy as np
 import matplotlib.pyplot as plt
 from typing import Type
+import json
 from ..data import (reverse_normalize, 
                     save_slices, 
                     save_side_by_side_slices, 
@@ -35,6 +36,7 @@ class UnetLightning3D(pl.LightningModule):
                  dummy_image=None, 
                  convert_from_hu=True,
                  debug_flag=False, 
+                 bbox_file = None,
                 ):
         """
             model: pytorch modeal - input unet model 
@@ -51,6 +53,8 @@ class UnetLightning3D(pl.LightningModule):
             dummy_image=None, 
             debug_flag=False,
             convert_from_hu: bool = True - If the images will originally be in hu values that need to be converted
+            bbox_file: str or None - if the path is provided it will heavily weight the loss around the bounding boxes
+                This should only be used when passing in the original volumes not the encoded ones
         """
         super().__init__()
         self.save_hyperparameters(ignore=['unet_cls', 'decode_model', 'dummy_image'])
@@ -90,6 +94,12 @@ class UnetLightning3D(pl.LightningModule):
         self.fixed_noise = None
         self._wandb_logger = None
         self._wandb_exp = None
+
+        if bbox_file is not None:
+            with open(bbox_file, "r") as f:
+                self.bboxes = json.load(f)
+        else:
+            self.bboxes = None
 
     def on_fit_start(self) -> None:
         if not self.trainer.is_global_zero:
@@ -159,7 +169,28 @@ class UnetLightning3D(pl.LightningModule):
 
             self.log("debug/fwd_ms", fwd_ms, prog_bar=True, on_step=True, logger=True, sync_dist=False)
 
-        loss = torch.mean((vt - ut) ** 2)
+        if self.bboxes is not None:
+            B, _, D, H, W = vt.shape
+            margin = 4
+            w_bg, w_roi = 1.0, 10.0
+            w = torch.full((B, 1, D, H, W), w_bg, device=vt.device)
+
+            for b in range(B):
+
+                nodule_id_a = f"{meta_data[b]['nodule_group_a']}_{meta_data[b]['exam_a']}_{meta_data[b]['exam_idx_a']}"
+                nodule_id_b = f"{meta_data[b]['nodule_group_b']}_{meta_data[b]['exam_b']}_{meta_data[b]['exam_idx_b']}"
+                h0a,h1a,w0a,w1a,d0a,d1a = self.bboxes[nodule_id_a]["bbox"]
+                h0b,h1b,w0b,w1b,d0b,d1b = self.bboxes[nodule_id_b]["bbox"]
+
+                h0 = max(0, min(h0a, h0b) - margin); h1 = min(H, max(h1a, h1b) + margin)
+                w0 = max(0, min(w0a, w0b) - margin); w1 = min(W, max(w1a, w1b) + margin)
+                d0 = max(0, min(d0a, d0b) - margin); d1 = min(D, max(d1a, d1b) + margin)
+
+                w[b, :, d0:d1, h0:h1, w0:w1] = w_roi
+
+            loss = (w * (vt - ut).pow(2)).sum() / (w.sum() + 1e-8)
+        else:
+            loss = torch.mean((vt - ut) ** 2)
 
         
         lr = self.trainer.optimizers[0].param_groups[0]["lr"]
