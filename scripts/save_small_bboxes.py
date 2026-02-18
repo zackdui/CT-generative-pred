@@ -36,7 +36,7 @@ if __name__=="__main__":
     # fm_model_checkpoint = "experiments/fm_3d_pretrain/full_latent/lightning_logs/version_1/checkpoints/val-epoch=429-val_loss=0.32.ckpt"
     # vae_checkpoint = "/data/rbg/users/duitz/CT-generative-pred/final_saved_models/vae_fixed_std_no_reg.pt"
     batch_size = 2
-    max_saved_examples = 10
+    max_saved_examples = 1
     # interpolate=True
     # if interpolate:
     interpolated_pixel_spacing = [0.703125 / 2, 0.703125 / 2, 2.5]
@@ -49,10 +49,10 @@ if __name__=="__main__":
 
     ## Load Dataset
     base_paths = load_config(path_yaml)
-    full_test_parquet = base_paths.full_data_test_parquet
-    full_nodule_parquet = base_paths.bounding_boxes_test_parquet
+    full_train_parquet = base_paths.full_data_train_parquet
+    full_nodule_parquet = base_paths.bounding_boxes_train_parquet
     # raw_nodule_index = base_paths.encoded_nodule_test_index
-    paired_nodule_parquet = base_paths.paired_nodules_test_parquet
+    paired_nodule_parquet = base_paths.paired_nodules_train_parquet
     # data_root = "/data/rbg/scratch/test_nlst_nodule_encoded_cache"
 
     # test_dataset = CachedNoduleDataset(full_test_parquet, 
@@ -67,13 +67,13 @@ if __name__=="__main__":
     #                                    return_meta_data=True)
     
     # Alternative dataset with raw cached nodule dir
-    test_dataset = CachedNoduleDataset(full_test_parquet, 
+    test_dataset = CachedNoduleDataset(full_train_parquet, 
                                        full_nodule_parquet, 
                                        base_paths.raw_nodule_index, 
                                        base_paths.raw_cached_nodule_dir, 
                                        paired_nodule_parquet=paired_nodule_parquet,
                                        mode="paired",
-                                       split="test",
+                                       split="train",
                                        max_length=None,
                                        max_cache_size=50,
                                        return_meta_data=True)
@@ -212,5 +212,5 @@ if __name__=="__main__":
             if total % 200 == 0:
                 print(f"Processed {total} nodules...")
 
-    with open("test_raw_data_nodule_original_boxes.json", "w") as f:
+    with open("train_raw_data_nodule_original_boxes.json", "w") as f:
         json.dump(output_data, f)
