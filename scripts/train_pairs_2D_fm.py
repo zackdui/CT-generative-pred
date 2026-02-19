@@ -1,0 +1,1 @@
+# This file is a placeholder script for training pairs in 2D diffusion models

@@ -13,12 +13,15 @@ from CTFM.utils.plot_lr import plot_lr_from_metrics
 from lightning.pytorch.utilities import rank_zero_only
 from torch import tensor
 from .auto_encoder_2d import AutoEncoder_Lightning
-# import pdb; pdb.set_trace()
+from ..data import reverse_normalize
+from ..utils import window_ct_hu_to_png
+
 
 
 class UnetLightning(pl.LightningModule):
     def __init__(self, 
                  model, 
+                 paired_input=False,
                  lr=.001, 
                  sigma = 0.1, 
                  output_dir="outputs_random", 
@@ -26,12 +29,14 @@ class UnetLightning(pl.LightningModule):
                  img_size = (64, 64), 
                  decode_model=AutoEncoder_Lightning(),
                  num_val_images = 1,
-                 use_gauss_input = True,
+                #  use_gauss_input = True,
                  dummy_image=None, 
+                 convert_to_hu=True,
                  debug_flag=False, 
                 ):
         """
             model: pytorch modeal - input unet model 
+            paired_input: Bool - Whether the input is paired images concatenated along channel dimension
             lr: float - optimizer learning rate (In prectice there is a warmup and cosine annealing) 
             sigma: float - flow matching sigma 
             output_dir: str - directory to output validation and test samples
@@ -40,23 +45,27 @@ class UnetLightning(pl.LightningModule):
             decode_model: pytorch model with encode and decode functions or None - 
                 default is AutoEncoder_Lightning(): If it is None then no model will be used to decode
             num_val_images: int - number of validation images to generate in the validation step
-            use_gauss_input: Bool - Whether to input gaussain noise or actual images for validaiton and test
-                True inputs gaussian noise
+            # use_gauss_input: Bool - Whether to input gaussain noise or actual images for validaiton and test
+            #     True inputs gaussian noise
             dummy_image=None, 
             debug_flag=False, 
         """
         super().__init__()
         self.save_hyperparameters(ignore=['model'])
         self.model = model
-        self.FM = ExactOptimalTransportConditionalFlowMatcher(sigma=sigma)
-        # self.FM = ConditionalFlowMatcher(sigma=sigma)
+        self.paired_input = paired_input
+        if self.paired_input:
+            self.FM = ConditionalFlowMatcher(sigma=sigma)
+        else:
+            self.FM = ExactOptimalTransportConditionalFlowMatcher(sigma=sigma)
         self.output_dir = output_dir
         self.lr = lr
         self.image_size = img_size
         self.input_channels = input_channels
         self.num_val_images = num_val_images
-        self.use_gauss_input = use_gauss_input
+        # self.use_gauss_input = use_gauss_input
         self.dummy_image = dummy_image
+        self.convert_to_hu = convert_to_hu
         self.debug_flag = debug_flag
 
         # Used for inference only if gernerating a latent space and then decoding it
@@ -89,8 +98,12 @@ class UnetLightning(pl.LightningModule):
     
 
     def training_step(self, batch, batch_idx):
-        x1 = batch
-        x0 = torch.randn_like(x1)
+        if self.paired_input:
+            x0 = batch[:, 0:self.input_channels, :, :]
+            x1 = batch[:, self.input_channels:, :, :]
+        else:
+            x1 = batch
+            x0 = torch.randn_like(x1)
         t, xt, ut = self.FM.sample_location_and_conditional_flow(x0, x1)
         vt = self(t, xt)
         loss = torch.mean((vt - ut) ** 2)
@@ -124,7 +137,7 @@ class UnetLightning(pl.LightningModule):
             gradient_clip_algorithm=gradient_clip_algorithm
         )
 
-    def generate_images(self, x_input: tensor, n_steps=50):
+    def generate_images(self, x_input: tensor, n_steps=80):
         """ 
         Generate images from the model given an input image x_input 
         x_input: tensor - input to generate from
@@ -147,8 +160,12 @@ class UnetLightning(pl.LightningModule):
         rank = self.global_rank
 
         # First Compute the loss
-        x1 = batch
-        x0 = torch.randn_like(x1)
+        if self.paired_input:
+            x0 = batch[:, 0:self.input_channels, :, :]
+            x1 = batch[:, self.input_channels:, :, :]
+        else:
+            x1 = batch
+            x0 = torch.randn_like(x1)
         t, xt, ut = self.FM.sample_location_and_conditional_flow(x0, x1)
         vt = self(t, xt)
         val_loss = torch.mean((vt - ut) ** 2)
@@ -159,10 +176,16 @@ class UnetLightning(pl.LightningModule):
         if rank != 0:
             return val_loss
         
-        if self.use_gauss_input:
-            x_gauss = torch.randn(self.num_val_images, batch.shape[1], batch.shape[2], batch.shape[3]).to(batch.device)
+        # if self.use_gauss_input:
+        #     x_gauss = torch.randn(self.num_val_images, batch.shape[1], batch.shape[2], batch.shape[3]).to(batch.device)
+        # else:
+        #     x_gauss = x1[:self.num_val_images]
+
+        if self.paired_input:
+            x_gauss = x0[:self.num_val_images]
         else:
-            x_gauss = x1[:self.num_val_images]
+            x_gauss = torch.randn(self.num_val_images, batch.shape[1], batch.shape[2], batch.shape[3]).to(batch.device)
+
         x_output = self.generate_images(x_gauss)
 
         images = x_output.view([-1, self.input_channels, self.image_size[0], self.image_size[1]]) 
@@ -176,16 +199,39 @@ class UnetLightning(pl.LightningModule):
 
             save_path_in = f"{self.validation_path}/validation_step={global_step}_rank={rank}_sample_in.png"
             save_path_out = f"{self.validation_path}/validation_step={global_step}_rank={rank}_sample_out.png"
+            save_path_target = f"{self.validation_path}/validation_step={global_step}_rank={rank}_sample_target.png"
 
-            save_image(input_img, save_path_in, nrow=1,normalize=True, value_range=(-1, 1))
-            save_image(output_img, save_path_out, nrow=1,normalize=True, value_range=(-1, 1))
-            
+            save_image(input_img, save_path_in, nrow=1, normalize=True, value_range=(-1, 1))
+            if self.convert_to_hu:
+                output_img_hu = reverse_normalize(output_img, clip_window=(-2000, 500))
+                output_img = window_ct_hu_to_png(output_img_hu, center=-600, width=1500, bit_depth=8, return_float=True)
+                save_image(output_img, save_path_out, nrow=1, normalize=True, value_range=(0, 255))
+            else:
+                save_image(output_img, save_path_out, nrow=1, normalize=True, value_range=(-1, 1))
+            if self.paired_input:
+                target_img = x1[i]
+                if self.decode_model is not None:
+                    with torch.no_grad():
+                        target_img = self.decode_model.decode(target_img.unsqueeze(0))
+                    target_img = target_img.squeeze(0)
+                target_img = target_img.clip(-1, 1)
+                if self.convert_to_hu:
+                    target_img_hu = reverse_normalize(target_img, clip_window=(-2000, 500))
+                    target_img = window_ct_hu_to_png(target_img_hu, center=-600, width=1500, bit_depth=8, return_float=True)
+                    save_image(target_img, save_path_target, nrow=1, normalize=True, value_range=(0, 255))
+                else:
+                    save_image(target_img, save_path_target, nrow=1, normalize=True, value_range=(-1, 1))
+
         return val_loss
         
     
     def test_step(self, batch, batch_idx):
-        x_batch = batch
-        x_gauss = torch.randn_like(x_batch)
+        if self.paired_input:
+            x_gauss = batch[:, 0:self.input_channels, :, :]
+            x_batch = batch[:, self.input_channels:, :, :]
+        else:
+            x_batch = batch
+            x_gauss = torch.randn_like(x_batch)
 
         x_out = self.generate_images(x_gauss)
 
@@ -200,10 +246,28 @@ class UnetLightning(pl.LightningModule):
             rank = self.trainer.global_rank
             save_path_in = f"{self.output_dir}/final_test_batch={batch_idx}_rank={rank}_sample_{i}_sample_in.png"
             save_path_out = f"{self.output_dir}/final_test_batch={batch_idx}_rank={rank}_sample_{i}_sample_out.png"
+            save_path_target = f"{self.output_dir}/final_test_batch={batch_idx}_rank={rank}_sample_{i}_sample_target.png"
 
             save_image(input_img, save_path_in, nrow=1,normalize=True, value_range=(-1, 1))
-            save_image(output_img, save_path_out, nrow=1,normalize=True, value_range=(-1, 1))
-            
+            if self.convert_to_hu:
+                output_img_hu = reverse_normalize(output_img, clip_window=(-2000, 500))
+                output_img = window_ct_hu_to_png(output_img_hu, center=-600, width=1500, bit_depth=8)
+                save_image(output_img, save_path_out, nrow=1,normalize=True, value_range=(0, 255))
+            else:
+                save_image(output_img, save_path_out, nrow=1,normalize=True, value_range=(-1, 1))
+            if self.paired_input:
+                target_img = x_batch[i]
+                if self.decode_model is not None:
+                    with torch.no_grad():
+                        target_img = self.decode_model.decode(target_img.unsqueeze(0))
+                    target_img = target_img.squeeze(0)
+                target_img = target_img.clip(-1, 1)
+                if self.convert_to_hu:
+                    target_img_hu = reverse_normalize(target_img, clip_window=(-2000, 500))
+                    target_img = window_ct_hu_to_png(target_img_hu, center=-600, width=1500, bit_depth=8)
+                    save_image(target_img, save_path_target, nrow=1,normalize=True, value_range=(0, 255))
+                else:  
+                    save_image(target_img, save_path_target, nrow=1,normalize=True, value_range=(-1, 1))
 
 
 

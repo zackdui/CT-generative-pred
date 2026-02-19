@@ -42,7 +42,7 @@ def parse_args(argv=None):
     parser.add_argument(
         "-s", "--samples",
         type=int,
-        default=500,
+        default=None,
         help="Number of samples to use (default: 10000). None is all samples."
     )
     parser.add_argument(
@@ -75,8 +75,9 @@ def parse_args(argv=None):
 
 
 def main(argv=None):
+    experiment_name = "unconditioned_2d"
     path_yaml = "configs/paths.yaml"
-    run_output_dir = "/data/rbg/users/duitz/CT-generative-pred/outputs/outputs_2D_cfm_pretrain"
+    run_output_dir = "/data/rbg/users/duitz/CT-generative-pred/experiments/fm_2d_pretrain/" + experiment_name
     os.makedirs(run_output_dir, exist_ok=True)
     
     args = parse_args(argv)
@@ -91,9 +92,13 @@ def main(argv=None):
     full_data_parquet = base_paths.full_data_train_parquet
     data_root = base_paths.encoded_dir_2d
     encoded_index_name = os.path.join(data_root, "meta", "index.parquet")
-    saved_transforms_file = base_paths.saved_transforms_file
-    with open(saved_transforms_file, 'rb') as f:
-        saved_transforms = pickle.load(f)
+    # saved_transforms_file = base_paths.saved_transforms_file
+    
+    # with open(saved_transforms_file, 'rb') as f:
+    #     saved_transforms = pickle.load(f)
+    
+    saved_transforms = []
+    
 
     if debug_flag:
         global_n = 5
@@ -116,8 +121,9 @@ def main(argv=None):
         dataset = CTOrigDataset2D(parquet_path=full_data_parquet,
                                   device=device,
                                   saved_transforms=saved_transforms,
-                                  max_length=global_n,)
-        
+                                  max_length=global_n,
+                                  return_meta_data=False)
+
     if debug_flag:
         # import pdb; pdb.set_trace()
         train_batch_size = 1
@@ -131,7 +137,7 @@ def main(argv=None):
         train_dataset, test_dataset = random_split(dataset, [train_size, test_size])
 
     train_loader = DataLoader(train_dataset, batch_size=train_batch_size, shuffle=True, num_workers = 2, drop_last=True) #, timeout=30)
-    test_loader = DataLoader(test_dataset, batch_size=test_batch_size, shuffle=False)
+    test_loader = DataLoader(test_dataset, batch_size=test_batch_size, shuffle=True)
 
     ####### For Single Image Training ########
     # image = train_dataset[0][0]
@@ -164,7 +170,8 @@ def main(argv=None):
 
     light_model = UnetLightning(model, lr=lr, output_dir=run_output_dir)
 
-    logger = CSVLogger(save_dir=os.getcwd())
+    logger_dir = f"/data/rbg/users/duitz/CT-generative-pred/experiments/fm_2d_pretrain/{experiment_name}"
+    logger = CSVLogger(save_dir=logger_dir)
     checkpointer = ModelCheckpoint(
         monitor="train_loss",
         dirpath=os.path.join(logger.log_dir, "checkpoints"),
@@ -194,7 +201,7 @@ def main(argv=None):
                             accelerator="auto",
                             callbacks=[checkpointer, lr_monitor], 
                             log_every_n_steps=1,
-                            max_epochs=20,
+                            max_epochs=100,
                             num_sanity_val_steps=2,
                             gradient_clip_val=1.0, 
                             gradient_clip_algorithm="value",
@@ -206,7 +213,7 @@ def main(argv=None):
 
     best_path = checkpointer.best_model_path
 
-    trainer.test(dataloaders=test_loader, ckpt_path=best_path)
+    # trainer.test(dataloaders=test_loader, ckpt_path=best_path)
     
     if trainer.is_global_zero:
         log_dir = trainer.logger.log_dir
