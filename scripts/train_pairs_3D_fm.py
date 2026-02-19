@@ -106,7 +106,7 @@ def main(model_checkpoint, # Can be None
         )
 
     if model_checkpoint is None:
-        light_model = UnetLightning3D(DiffusionModelUNet, unet_kwargs, paired_input=True, lr=lr, output_dir=run_output_dir, input_channels=unet_3d_cfm_configs.in_channels, decode_model=decode_model, img_size=training_args.img_size, bbox_file=train_bboxes)
+        light_model = UnetLightning3D(DiffusionModelUNet, unet_kwargs, paired_input=True, lr=lr, output_dir=run_output_dir, input_channels=unet_3d_cfm_configs.in_channels, decode_model=decode_model, img_size=training_args.img_size, bbox_file=train_bboxes, time_context_dim=training_args.time_context_dim)
     else:
         light_model = UnetLightning3D.load_from_checkpoint(
                                                     model_checkpoint,
@@ -115,7 +115,8 @@ def main(model_checkpoint, # Can be None
                                                     strict=False, 
                                                     paired_input=True,
                                                     output_dir=run_output_dir,
-                                                    bbox_file=train_bboxes
+                                                    bbox_file=train_bboxes,
+                                                    time_context_dim=training_args.time_context_dim
                                                 )
 
     ## Loggers and Callbacks ##
@@ -166,7 +167,7 @@ def main(model_checkpoint, # Can be None
                             accelerator="auto",
                             callbacks=[checkpointer_train, checkpointer_val, lr_monitor], 
                             log_every_n_steps=50,
-                            max_epochs=500,
+                            max_epochs=training_args.max_epochs,
                             num_sanity_val_steps=2,
                             gradient_clip_val=1.0, 
                             gradient_clip_algorithm="norm",

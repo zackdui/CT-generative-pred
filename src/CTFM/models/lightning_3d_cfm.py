@@ -21,6 +21,18 @@ from ..utils import window_ct_hu_to_png, prepare_for_wandb_hu, prepare_for_wandb
 
 import time
 
+class TimeContextMLP(nn.Module):
+    def __init__(self, dim: int):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(dim, 4 * dim),
+            nn.SiLU(),
+            nn.Linear(4 * dim, dim),
+        )
+
+    def forward(self, emb: torch.Tensor) -> torch.Tensor:
+        return self.net(emb)
+
 class UnetLightning3D(pl.LightningModule):
     def __init__(self, 
                  unet_cls: Type[nn.Module], 
@@ -37,6 +49,7 @@ class UnetLightning3D(pl.LightningModule):
                  convert_from_hu=True,
                  debug_flag=False, 
                  bbox_file = None,
+                 time_context_dim = None,
                 ):
         """
             model: pytorch modeal - input unet model 
@@ -55,9 +68,19 @@ class UnetLightning3D(pl.LightningModule):
             convert_from_hu: bool = True - If the images will originally be in hu values that need to be converted
             bbox_file: str or None - if the path is provided it will heavily weight the loss around the bounding boxes
                 This should only be used when passing in the original volumes not the encoded ones
+                It will only work if input channels is 1
+            time_context_dim: int or None - if provided, it will be used to condition the model on the time between scans
         """
         super().__init__()
         self.save_hyperparameters(ignore=['unet_cls', 'decode_model', 'dummy_image'])
+        if time_context_dim is not None:
+            model_hyperparameters["with_conditioning"] = True
+            model_hyperparameters["cross_attention_dim"] = time_context_dim
+            self.with_time = True
+            self.time_mlp = TimeContextMLP(time_context_dim)
+            self.context_dim = time_context_dim
+        else:
+            self.with_time = False
         self.model = unet_cls(**model_hyperparameters)
         model_parameters = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
         print(f"Number of trainable parameters in model: {model_parameters}")
@@ -95,11 +118,35 @@ class UnetLightning3D(pl.LightningModule):
         self._wandb_logger = None
         self._wandb_exp = None
 
-        if bbox_file is not None:
+        if bbox_file is not None and self.input_channels == 1:
             with open(bbox_file, "r") as f:
                 self.bboxes = json.load(f)
         else:
             self.bboxes = None
+
+    # The next function is for embedding the time between scans to condition on
+    def sinusoidal_embedding(self, x: torch.Tensor, dim: int, max_period: float = 10000.0) -> torch.Tensor:
+        """
+        x: (B,) on correct device already
+        dim: embedding dimension (should match cross_attention_dim if you pass to context)
+        returns: (B, dim)
+        """
+        assert x.dim() == 1, f"x should be (B,), got {x.shape}"
+        half = dim // 2
+
+        # freqs: (half,)
+        freqs = torch.exp(
+            -torch.log(torch.tensor(max_period, device=x.device, dtype=x.dtype))
+            * torch.arange(0, half, device=x.device, dtype=x.dtype) / half
+        )
+
+        args = x[:, None] * freqs[None, :]          # (B, half)
+        emb = torch.cat([torch.cos(args), torch.sin(args)], dim=1)
+
+        # if dim is odd, pad one zero
+        if dim % 2 == 1:
+            emb = torch.nn.functional.pad(emb, (0, 1))
+        return emb
 
     def on_fit_start(self) -> None:
         if not self.trainer.is_global_zero:
@@ -134,8 +181,16 @@ class UnetLightning3D(pl.LightningModule):
         #     return (z - xt)/torch.clip(1-t, min=1e-2)
         # Optional change to t
         # t = t * 1000
-        if y:
-            return self.model(xt, t, y)
+        if y is not None:
+            # Make y a tensor on the correct device/dtype
+            if not torch.is_tensor(y):
+                y = torch.as_tensor(y, device=xt.device, dtype=xt.dtype)  # (B,)
+            else:
+                y = y.to(device=xt.device, dtype=xt.dtype)
+            embed = self.sinusoidal_embedding(y, self.context_dim)
+            context = self.time_mlp(embed)
+            context = context.unsqueeze(1)
+            return self.model(xt, t, context=context)
         return self.model(xt, t)
 
 
@@ -159,8 +214,11 @@ class UnetLightning3D(pl.LightningModule):
             torch.cuda.synchronize()
             start.record()
 
-
-        vt = self(xt, t)
+        if self.with_time:
+            delta = torch.as_tensor([m["delta_days"] for m in meta_data], device=xt.device, dtype=xt.dtype)
+            vt = self(xt, t, y=delta)
+        else:
+            vt = self(xt, t)
 
         if self.debug_flag:
             end.record()
@@ -224,7 +282,7 @@ class UnetLightning3D(pl.LightningModule):
             gradient_clip_algorithm=gradient_clip_algorithm
         )
 
-    def generate_images(self, x_input: tensor, n_steps=100):
+    def generate_images(self, x_input: tensor, n_steps=100, time_delta=None):
         """ 
         Generate images from the model given an input image x_input 
         x_input: tensor - input to generate from
@@ -239,13 +297,13 @@ class UnetLightning3D(pl.LightningModule):
             t1 = t_vec[idx+1]
             dt = t1 - t0
             t = t0.expand(B)
-            v = self(x_t, t)
+            v = self(x_t, t, y=time_delta)
             x_t = x_t + v * dt
         return x_t
     
 
     @torch.no_grad()
-    def generate_images_rk2(self, x_input: Tensor, n_steps: int = 50) -> Tensor:
+    def generate_images_rk2(self, x_input: Tensor, n_steps: int = 50, time_delta=None) -> Tensor:
         """
         RK2 (Heun) integrator for dx/dt = v(x,t).
         Integrates t from 0 -> 1 with n_steps steps.
@@ -265,13 +323,13 @@ class UnetLightning3D(pl.LightningModule):
             t1b = t1.expand(B)
 
             # k1 = v(x, t0)
-            k1 = self(x_t, t0b)
+            k1 = self(x_t, t0b, y=time_delta)
 
             # predictor: x_euler = x + dt*k1
             x_euler = x_t + dt * k1
 
             # k2 = v(x_euler, t1)
-            k2 = self(x_euler, t1b)
+            k2 = self(x_euler, t1b, y=time_delta)
 
             # Heun update: x_{t+dt} = x + dt * (k1 + k2)/2
             x_t = x_t + dt * 0.5 * (k1 + k2)
@@ -279,7 +337,7 @@ class UnetLightning3D(pl.LightningModule):
         return x_t
 
     @torch.no_grad()
-    def generate_images_rk4(self, x_input: Tensor, n_steps: int = 50) -> Tensor:
+    def generate_images_rk4(self, x_input: Tensor, n_steps: int = 50, time_delta=None) -> Tensor:
         """
         Classic RK4 integrator for dx/dt = v(x,t).
         Integrates t from 0 -> 1 with n_steps steps.
@@ -300,10 +358,10 @@ class UnetLightning3D(pl.LightningModule):
             thb = th.expand(B)
             t1b = t1.expand(B)
 
-            k1 = self(x_t, t0b)
-            k2 = self(x_t + 0.5 * dt * k1, thb)
-            k3 = self(x_t + 0.5 * dt * k2, thb)
-            k4 = self(x_t + dt * k3, t1b)
+            k1 = self(x_t, t0b, y=time_delta)
+            k2 = self(x_t + 0.5 * dt * k1, thb, y=time_delta)
+            k3 = self(x_t + 0.5 * dt * k2, thb, y=time_delta)
+            k4 = self(x_t + dt * k3, t1b, y=time_delta)
 
             x_t = x_t + (dt / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4)
 
@@ -398,7 +456,7 @@ class UnetLightning3D(pl.LightningModule):
                 }, step=self.global_step)
                 plt.close(fig3)
     
-    def save_predictions(self, x0, x1, output_dir: str, prefix: str):
+    def save_predictions(self, x0, x1, output_dir: str, prefix: str, time_delta=None):
         if self.paired_input:
             x_input = x0[:self.num_val_images]
             x_target = x1[:self.num_val_images]
@@ -406,7 +464,7 @@ class UnetLightning3D(pl.LightningModule):
             x_input = torch.randn(self.num_val_images, x1.shape[1], x1.shape[2], x1.shape[3], x1.shape[4]).to(x1.device)
             x_target = None
 
-        x_output = self.generate_images(x_input)
+        x_output = self.generate_images(x_input, time_delta=time_delta)
 
         images = x_output.view([-1, self.input_channels, self.image_size[0], self.image_size[1], self.image_size[2]]) 
 
@@ -475,8 +533,12 @@ class UnetLightning3D(pl.LightningModule):
         else:
             x1 = image_data
             x0 = torch.randn_like(x1)
+        if self.with_time:
+            delta = torch.as_tensor([m["delta_days"] for m in meta_data], device=x0.device, dtype=x0.dtype)
+        else:
+            delta = None
         t, xt, ut = self.FM.sample_location_and_conditional_flow(x0, x1)
-        vt = self(xt, t)
+        vt = self(xt, t, delta)
         val_loss = torch.mean((vt - ut) ** 2)
         self.log("val_loss", val_loss.detach().float(), on_step=False, on_epoch=True, prog_bar=False, logger=True, sync_dist=True)
 
@@ -489,7 +551,7 @@ class UnetLightning3D(pl.LightningModule):
             # print("Starting predictions")
             # torch.cuda.synchronize()  # ensure previous CUDA ops finish
             # t0 = time.perf_counter()
-            self.save_predictions(x0, x1, output_dir=self.validation_path, prefix=f"validation_step={global_step}_rank={rank}")
+            self.save_predictions(x0, x1, output_dir=self.validation_path, prefix=f"validation_step={global_step}_rank={rank}", time_delta=delta)
 
             # torch.cuda.synchronize()  # ensure save_wandb CUDA work finishes
             # dt = time.perf_counter() - t0
@@ -506,8 +568,11 @@ class UnetLightning3D(pl.LightningModule):
         else:
             x_batch = image_data
             x_gauss = torch.randn_like(x_batch)
-
-        self.save_predictions(x_gauss, x_batch, output_dir=self.output_dir, prefix=f"final_test_batch={batch_idx}_rank={self.trainer.global_rank}")
+        if self.with_time:
+            delta = torch.as_tensor([m["delta_days"] for m in meta_data], device=x0.device, dtype=x0.dtype)
+        else:
+            delta = None
+        self.save_predictions(x_gauss, x_batch, output_dir=self.output_dir, prefix=f"final_test_batch={batch_idx}_rank={self.trainer.global_rank}", time_delta=delta)
 
         
 
