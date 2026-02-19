@@ -61,6 +61,7 @@ experiments/
 code_experiments/
 final_saved_models_training/
 test*
+outputs/
 
 
 

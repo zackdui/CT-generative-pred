@@ -52,6 +52,7 @@ CT-generative-pred/
 │
 ├── scripts/
 │   ├── eval_2D_fm.py
+│   ├── eval_3D_fm_raw.py
 │   ├── eval_3D_fm.py
 │   ├── eval_3d_vae.py
 │   ├── model_diagram_save.py

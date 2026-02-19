@@ -118,6 +118,13 @@ At this point, the dataset creation pipeline is complete.
 
 ---
 
+### 1.12 Create and Save Small Bounding Boxes
+
+15. Run `save_small_bboxes` or `save_small_bboxes_encoded`  
+    - Creates small bounding boxes for nodules. Bounding boxes around the nodule after extracting the 3D boxes.
+
+---
+
 ## 2. Variational Autoencoder (VAE)
 
 15. Train a 3D VAE on nodules:
