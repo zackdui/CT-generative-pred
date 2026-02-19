@@ -71,7 +71,7 @@ class CTOrigDataset2D(Dataset):
                  image_size: Tuple[int, int] = (512, 512),
                  resample: bool = True,
                  resample_size: Tuple[int, int] = (0.703125 ,0.703125, 2.5),
-                 clip_window: Tuple[int, int] = (-1000, 400),
+                 clip_window: Tuple[int, int] = (-2000, 500),
                  max_cache_size: int = 1000,
                  max_length: Optional[int] = None,
                  return_meta_data: bool = True):
@@ -138,16 +138,18 @@ class CTOrigDataset2D(Dataset):
         if self.mode == 'single':
             if self.slice_mode == 'all':
                 total_slices = 0
+                self.slice_counts = []
                 for idx in range(len(self.df)):
                     row = self.df.iloc[idx]
-                    image_size = int(row["num_slices"])
+                    image_size = int(row["num_slices"] * row["pixel_spacing"][2] / self.resample_size[2]) - 1
                     total_slices += image_size
+                    self.slice_counts.append(image_size)
                 self.total_slices = total_slices
             else:
                 self.total_slices = len(self.df) * self.slices_per_scan
 
             if self.slice_mode == 'all':
-                self.slice_counts = self.df["num_slices"].astype(int).tolist()
+                # self.slice_counts = self.df["num_slices"].astype(int).tolist()
                 self.prefix = np.zeros(len(self.slice_counts) + 1, dtype=np.int64)
                 self.prefix[1:] = np.cumsum(self.slice_counts)
         else: # Mode is pairs
@@ -185,7 +187,7 @@ class CTOrigDataset2D(Dataset):
             scan_idx = index // self.slices_per_scan
             if self.mode == 'single':
                 row = self.df.iloc[scan_idx]
-                num_slices = int(row["num_slices"])
+                num_slices = int(row["num_slices"] * row["pixel_spacing"][2] / self.resample_size[2]) - 1
                 slice_idx = np.random.randint(0, num_slices)
             else:
                 row = self.pairs_df.iloc[scan_idx]
@@ -199,6 +201,7 @@ class CTOrigDataset2D(Dataset):
         exam_id = row['exam_id']
         image_tensor = self.cache.get_image(exam_id)
         if image_tensor is not None:
+            slice_idx = min(slice_idx, image_tensor.shape[1] - 1)
             image_tensor_slice = image_tensor[:, slice_idx, :, :]
             # Shape (1, Y, X)
             return image_tensor_slice
@@ -298,7 +301,7 @@ class CTOrigDataset3D(Dataset):
                  image_size: Tuple[int, int, int] = (512, 512, 208),
                  resample: bool = True,
                  resample_size: Tuple[int, int, int] = (0.703125 ,0.703125, 2.5),
-                 clip_window: Tuple[int, int] = (-1500, 400),
+                 clip_window: Tuple[int, int] = (-2000, 500),
                  max_cache_size: int = 1000,
                  max_length: Optional[int] = None,
                  return_meta_data: bool = True):
