@@ -70,6 +70,7 @@ class Encoded2DSliceDataset(Dataset):
         per_exam_k: Optional[int] = None,
         global_n: Optional[int] = None,
         seed: Optional[int] = 42,
+        return_meta_data: bool = False,
     ):
         self.full_df = pd.read_parquet(full_data_parquet)
         self.index_df = pd.read_parquet(encoded_index_parquet)
@@ -90,6 +91,7 @@ class Encoded2DSliceDataset(Dataset):
             self.index_df = self.index_df[self.index_df.apply(predicate, axis=1)]
 
         self.index_df = self._sample_index(self.index_df.reset_index(drop=True), per_exam_k, global_n, seed)
+        self.return_meta_data = return_meta_data
 
     def _sample_index(
         self,
@@ -137,8 +139,9 @@ class Encoded2DSliceDataset(Dataset):
         # Original metadata row
         full_row = self.full_df.iloc[self.exam_to_idx[exam_id]].copy()
         full_row["slice_idx"] = slice_idx
-
-        return z_i, full_row
+        if self.return_meta_data:
+            return z_i, full_row
+        return z_i
 
 class Encoded3DFrom2DDataset(Dataset):
     """
@@ -773,6 +776,7 @@ class CachedNoduleDataset(Dataset):
                 #     full_row_a.to_dict() | full_nodule_row_a.to_dict() |
                 #     full_nodule_row_b.to_dict()
                 # )
+                meta["delta_days"] = meta["days_at_event_a"] - meta["days_at_event_b"]
                 return z_i, meta
             else:
                 return z_i
