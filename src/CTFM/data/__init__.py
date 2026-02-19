@@ -37,7 +37,8 @@ from .utils import (METAFILE_NOTFOUND_ERR,
                     safe_delete,
                     save_montage,
                     recover_small_bbox,
-                    save_two_figs_side_by_side)
+                    save_two_figs_side_by_side,
+                    save_three_figs_side_by_side)
 
 from .processing import write_new_nifti_files, write_registration_matrices, save_transformed_nifti_files, remove_bad_exams, save_correct_bounding_boxes
 from .datasets.CT_orig_data import CTOrigDataset2D, CTOrigDataset3D, CTNoduleDataset3D, RepeatedImageDataset
@@ -114,5 +115,6 @@ __all__ = [
     "safe_delete",
     "save_montage",
     "recover_small_bbox",
-    "save_two_figs_side_by_side"
+    "save_two_figs_side_by_side",
+    "save_three_figs_side_by_side"
 ]

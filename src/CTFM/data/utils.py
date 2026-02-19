@@ -1186,3 +1186,61 @@ def save_two_figs_side_by_side(fig_left, fig_right, out_path, dpi=200, title=Non
 
     fig.savefig(out_path, bbox_inches="tight", dpi=dpi)
     plt.close(fig)
+
+def save_three_figs_side_by_side(
+                                    fig_left, fig_middle, fig_right,
+                                    out_path,
+                                    dpi=200,
+                                    title=None,
+                                    subtitle_1=None,
+                                    subtitle_2=None,
+                                    subtitle_3=None,
+                                    bottom_text=None
+                                ):
+    # Draw canvases so sizes are known
+    fig_left.canvas.draw()
+    fig_middle.canvas.draw()
+    fig_right.canvas.draw()
+
+    # Get pixel sizes
+    w1, h1 = fig_left.canvas.get_width_height()
+    w2, h2 = fig_middle.canvas.get_width_height()
+    w3, h3 = fig_right.canvas.get_width_height()
+
+    # Create combined figure
+    fig, axes = plt.subplots(
+        1, 3,
+        figsize=((w1 + w2 + w3) / dpi, max(h1, h2, h3) / dpi),
+        dpi=dpi
+    )
+
+    axes[0].imshow(fig_left.canvas.buffer_rgba())
+    axes[1].imshow(fig_middle.canvas.buffer_rgba())
+    axes[2].imshow(fig_right.canvas.buffer_rgba())
+
+    for ax in axes:
+        ax.axis("off")
+
+    if title is not None:
+        fig.suptitle(title, fontsize=18, y=0.98)
+
+    if subtitle_1 is not None:
+        axes[0].set_title(subtitle_1, fontsize=12)
+    if subtitle_2 is not None:
+        axes[1].set_title(subtitle_2, fontsize=12)
+    if subtitle_3 is not None:
+        axes[2].set_title(subtitle_3, fontsize=12)
+    
+    # compute margins
+    top_margin = 0.95 if title is not None else 1.0
+    bottom_margin = 0.07 if bottom_text is not None else 0.0
+
+    # add bottom text FIRST
+    if bottom_text is not None:
+        fig.text(0.5, 0.02, bottom_text, ha='center', fontsize=10)
+
+    # then layout
+    fig.tight_layout(rect=[0, bottom_margin, 1, top_margin])
+
+    fig.savefig(out_path, bbox_inches="tight", dpi=dpi)
+    plt.close(fig)
