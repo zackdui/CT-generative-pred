@@ -10,51 +10,23 @@ The core objective of this project is:
 
 The repository contains:
 
+* 3D VAE training code
 * Unconditional 2D latent generative models
 * Unconditional 3D latent generative models
 * Conditional 3D temporal generative models
 * A full NLST data construction pipeline
 * Modular reusable modeling components
 
-Generative models operate both in **latent space** learned via a 3D VAE and in pixel space for high-resolution image generation.
+Generative models operate both in **latent space** and in pixel space for high-resolution image generation.
 
 
 ---
 
-## Conditional 3D Temporal Generation (Primary Contribution)
+## Conditional 3D Temporal Generation
 
-### Conditional Flow Matching with Time
+The central modeling task in this repository is conditional 3D temporal generation. Given a CT volume acquired at time $t_0$ and a time interval $\Delta t$, the model predicts a future volume at time $t_1$. Time information is incorporated through learned temporal embeddings that are injected into a 3D UNet-based architecture, enabling the model to learn structured longitudinal transformations directly in volumetric space.
 
-Input:
-
-* CT scan at time ( $t_0$ )
-* Time delta ( $\Delta t$ )
-
-Output:
-
-* Predicted CT scan at time ( $t_1$ )
-
-This allows:
-
-* Modeling nodule growth
-* Learning disease progression
-* Generating plausible future scans
-* Studying longitudinal latent dynamics
-
-Time conditioning is implemented using time embeddings injected into a 3D UNet-based architecture.
-
----
-
-## Flow Matching
-
-We use Flow Matching rather than traditional diffusion:
-
-* Deterministic ODE formulation
-* Direct velocity prediction
-* Stable training
-* Efficient Euler sampling
-
-Both unconditional and conditional variants are implemented in reusable modules.
+Generation is formulated using Flow Matching rather than traditional diffusion. The model learns a deterministic velocity field and produces samples via numerical integration, allowing stable training, efficient sampling, and a natural mechanism for conditioning. Both unconditional and conditional variants are implemented within the same modular framework.
 
 ---
 
@@ -79,7 +51,6 @@ CTFM.data
 CTFM.models
 CTFM.utils
 ```
-
 
 ---
 
@@ -114,15 +85,9 @@ pip install -e .
 
 ## Loading Data
 
-In `docs/process.md` you will find a full overview of the NLST data construction pipeline.
+In `docs/process.md` you will find a full overview of the NLST data construction pipeline which  contains a complete workflow from raw NLST DICOM scans to training-ready tensors..
 
 Below is a high-level summary.
-
----
-
-## NLST Data Pipeline
-
-This repository contains a complete workflow from raw NLST DICOM scans to training-ready tensors.
 
 ### Pipeline Steps
 
@@ -132,9 +97,8 @@ This repository contains a complete workflow from raw NLST DICOM scans to traini
 4. Pair consecutive exams
 5. Perform image registration
 6. Extract nodules
-7. Generate fixed bounding boxes
-8. Encode volumes using trained VAE
-9. Cache latent tensors for Flow Matching
+7. Encode volumes using trained VAE
+8. Cache latent tensors for Flow Matching
 
 ---
 
@@ -151,12 +115,6 @@ This repository contains a complete workflow from raw NLST DICOM scans to traini
 * **nlst_nodule_tracking.parquet** – Nodule tracking information. One nodule per row.
 * **nodules_with_fixed_bboxes.parquet** – Nodule information with fixed bounding boxes for registered images.
 * **paired_nodules.parquet** – One row per consecutive nodules.
-
----
-
-## Encoded Data
-
-Encoded latent tensors are saved separately to enable fast training.
 
 ---
 
@@ -182,10 +140,9 @@ Includes:
 
 Utilities include:
 
-* Reconstruction metrics
 * Bounding box overlays
 * Slice montage visualization
-* Temporal consistency checks
+* Nodule Segmentation and volume calculations
 
 Evaluation code lives in:
 
@@ -195,21 +152,15 @@ CTFM/eval/
 
 ---
 
-## Research Contributions
+## Research Findings
 
-This repository enables:
-
-* Latent 3D Flow Matching for CT
-* Temporal conditioning for volumetric generation
-* Longitudinal NLST processing
-* Nodule-aware training objectives
-* Modular generative modeling infrastructure
+This work investigates whether Flow Matching–based generative models can model longitudinal changes in chest CT scans, with a specific focus on pulmonary nodule growth. A complete 2D and 3D generative pipeline was developed, including unconditional and conditional models operating in both latent and pixel space, along with a tailored 3D variational autoencoder and spatially weighted objectives to emphasize clinically relevant regions. While the models successfully preserve global anatomical structure, accurately modeling small, localized volumetric growth remains challenging, highlighting the difficulty of inducing meaningful change within predominantly static anatomy.
 
 ---
 
 ## Acknowledgments
 
-This data pipeline from this project builds on code from:
+The data pipeline from this project builds on code from:
 - SybilX, MIT License (c) 2021 Peter Mikhael & Jeremy Wohlwend
 
 Special thanks to Peter Mikhael for all his mentorship in completing this project.
