@@ -27,12 +27,12 @@ Generative models operate both in **latent space** learned via a 3D VAE and in p
 
 Input:
 
-* CT scan at time ( t_0 )
-* Time delta ( \Delta t )
+* CT scan at time ( $t_0$ )
+* Time delta ( $\Delta t$ )
 
 Output:
 
-* Predicted CT scan at time ( t_1 )
+* Predicted CT scan at time ( $t_1$ )
 
 This allows:
 
@@ -209,7 +209,7 @@ This repository enables:
 
 ## Acknowledgments
 
-This project builds on code from:
+This data pipeline from this project builds on code from:
 - SybilX, MIT License (c) 2021 Peter Mikhael & Jeremy Wohlwend
 
 Special thanks to Peter Mikhael for all his mentorship in completing this project.
