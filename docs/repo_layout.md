@@ -31,6 +31,9 @@ CT-generative-pred/
 │   ├── unet_3d_cfm.yaml
 │   └── vae_3d_model.yaml
 │
+├── extra_functional_code_files/      # This is for code that was used for small tasks
+├── final_saved_models/
+│
 ├── metadata/
 │   ├── train/                # (.gitignored) This is built locally when running create_parquets script
 │       ├── nlst_full.parquet
@@ -44,6 +47,8 @@ CT-generative-pred/
 │   ├── mapping_registered_exams.pkl
 │   ├── nlst_nodule_tracking.parquet
 │   └── zack_exam_to_nifti.pkl
+│
+├── output_metrics/
 │
 ├── docs/
 │   ├── parquets_explanations.md
