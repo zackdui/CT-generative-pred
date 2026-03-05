@@ -26,24 +26,39 @@ from CTFM.eval import (load_segmentation_models,
                        get_volumes, 
                        save_montage_with_bbox3d,
                        dice_score,
-                       sample_euler)
+                       sample_euler,
+                       visualize_segmentation)
 
 
 
 if __name__=="__main__":
     ## Make sure to check path to index and directory when deciding on which data should be used
     ## Variables
-    eval_name = "flow_matching_eval_raw_feb_18th_train_model_eval_set"
+    eval_name = "flow_matching_time_100_small_bbox_raw_mar_4th_eval_model_eval_set_final"
     # fm_model_checkpoint = "/data/rbg/users/duitz/CT-generative-pred/final_saved_models/test_raw_full.ckpt"
-    fm_model_checkpoint = "/data/rbg/users/duitz/CT-generative-pred/experiments/fm_3d_paired/all_image_raw/lightning_logs/version_4/checkpoints/train-epoch=153-train_loss=0.02.ckpt"
+    # fm_model_checkpoint = "/data/rbg/users/duitz/CT-generative-pred/experiments/fm_3d_paired/all_image_raw/lightning_logs/version_4/checkpoints/train-epoch=153-train_loss=0.02.ckpt"
     # fm_model_checkpoint = "/data/rbg/users/duitz/CT-generative-pred/experiments/fm_3d_paired/all_image_raw/lightning_logs/version_4/checkpoints/val-epoch=135-val_loss=0.01.ckpt"
+
+    # fm_model_checkpoint = "/data/rbg/users/duitz/CT-generative-pred/experiments/fm_3d_paired/time_test_stable_new/lightning_logs/version_0/checkpoints/val-epoch=126-val_loss=0.02.ckpt"
+    # fm_model_checkpoint = "/data/rbg/users/duitz/CT-generative-pred/experiments/fm_3d_paired/time_test_stable_new/lightning_logs/version_0/checkpoints/train-epoch=144-train_loss=0.02.ckpt"
+
+    # fm_model_checkpoint = "/data/rbg/users/duitz/CT-generative-pred/experiments/fm_3d_paired/time_stable_all_100_smaller_bbox/lightning_logs/version_0/checkpoints/train-epoch=95-train_loss=0.02.ckpt"
+    fm_model_checkpoint = "/data/rbg/users/duitz/CT-generative-pred/experiments/fm_3d_paired/time_stable_all_100_smaller_bbox/lightning_logs/version_0/checkpoints/val-epoch=76-val_loss=0.02.ckpt"
+
+    # fm_model_checkpoint = "/data/rbg/users/duitz/CT-generative-pred/experiments/fm_3d_paired/time_test_stable_all_100/lightning_logs/version_0/checkpoints/train-epoch=145-train_loss=0.02.ckpt"
+
+    # fm_model_checkpoint = "experiments/fm_3d_paired/time_stable_all_10000_smaller_bbox/lightning_logs/version_0/checkpoints/train-epoch=29-train_loss=0.02.ckpt"
+    # fm_model_checkpoint = "/data/rbg/users/duitz/CT-generative-pred/experiments/fm_3d_paired/time_stable_all_10000_smaller_bbox/lightning_logs/version_0/checkpoints/val-epoch=29-val_loss=0.05.ckpt"
     # vae_checkpoint = "/data/rbg/users/duitz/CT-generative-pred/final_saved_models/vae_fixed_std_no_reg.pt"
     batch_size = 2
     pixel_spacing_non_interpolate = [0.703125, 0.703125, 2.5]
     pixel_spacing_interpolate = [0.703125 / 2, 0.703125 / 2, 2.5]
     max_dataset_size=None
-    max_examples = 5
-    location = "/data/rbg/users/duitz/CT-generative-pred/experiments/fm_3d_paired/results/raw_images"
+    max_examples = 10
+    train_data = False
+    with_time = True
+
+    location = f"/data/rbg/users/duitz/CT-generative-pred/experiments/fm_3d_paired/results/{eval_name}"
 
     os.makedirs(location, exist_ok=True)
 
@@ -72,6 +87,14 @@ if __name__=="__main__":
     paired_nodule_parquet = base_paths.paired_nodules_test_parquet
     data_root = base_paths.raw_cached_nodule_dir
     small_bboxes_path = base_paths.test_small_bboxes_raw
+    split_word = "test"
+
+    if train_data:
+        full_test_parquet = base_paths.full_data_train_parquet
+        full_nodule_parquet = base_paths.bounding_boxes_train_parquet
+        paired_nodule_parquet = base_paths.paired_nodules_train_parquet
+        small_bboxes_path = base_paths.train_small_bboxes_raw
+        split_word = "train"
 
     test_dataset = CachedNoduleDataset(full_test_parquet, 
                                        full_nodule_parquet, 
@@ -79,7 +102,7 @@ if __name__=="__main__":
                                        data_root, 
                                        paired_nodule_parquet=paired_nodule_parquet,
                                        mode="paired",
-                                       split="test",
+                                       split=split_word,
                                        max_length=max_dataset_size,
                                        max_cache_size=50,
                                        return_meta_data=True)
@@ -100,7 +123,7 @@ if __name__=="__main__":
     confidence_model.eval().to("cuda")
 
     ## Run Evaluation
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers = 2, drop_last=False, collate_fn=collate_image_meta)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers = 8, drop_last=False, collate_fn=collate_image_meta, pin_memory=True, persistent_workers=True)
     # evaluator_prep_interp = ImageEvaluatorPrep(vae_model, lit, n_steps=100, reverse_input=False, interpolate=True)
     # evaluator_prep_no_interp = ImageEvaluatorPrep(vae_model, lit, n_steps=100, reverse_input=False, interpolate=False)
     def prep_images(image_to_prep, interpolate=False):
@@ -127,13 +150,16 @@ if __name__=="__main__":
 
     for batch in tqdm(test_loader):
         images, meta = batch
-        
+        if with_time:
+            delta = torch.as_tensor([m["delta_days"] for m in meta], device=images.device, dtype=images.dtype)
+        else:
+            delta = None
         input_images, output_images = torch.chunk(images, 2, dim=1)
-        
-        input_images, output_images = input_images.to("cuda"), output_images.to("cuda")
+
+        input_images, output_images = input_images.to("cuda", non_blocking=True), output_images.to("cuda", non_blocking=True)
 
         ## Prepare all the images. There is some repeated work but I will leave it for now
-        sampled_non_processed = sample_euler(lit, input_images, n_steps=100, reverse=False)
+        sampled_non_processed = sample_euler(lit, input_images, condition=delta, n_steps=100, reverse=False)
         sampled_input_images_interp = prep_images(sampled_non_processed, interpolate=True)
         preped_input_images_interp = prep_images(input_images, interpolate=True)
         preped_output_images_interp = prep_images(output_images, interpolate=True)
@@ -147,6 +173,10 @@ if __name__=="__main__":
         binary_segmentation_output, confidence_scores_output = patch_segmenter(preped_output_images_interp, seg_model, lungmask_patch_tensor=None, confidence_model=confidence_model)
 
         volumes_generated = get_volumes(binary_segmentation_generated, pixel_spacing=pixel_spacing_interpolate)
+
+        if examples_saved < max_examples:
+            visualize_segmentation(sampled_input_images_interp, binary_segmentation_generated, output_path=location, code=f"{total}_eval_raw_gen")
+            visualize_segmentation(preped_output_images_interp, binary_segmentation_output, output_path=location, code=f"{total}_eval_raw_output")
 
         input_bboxes = []
         output_bboxes = []
@@ -185,7 +215,7 @@ if __name__=="__main__":
 
             dice_scores = dice_score(binary_segmentation_generated[i], binary_segmentation_output[i])
 
-            metrics_table.add_data(total, nodule_id_a, nodule_id_a, input_volumes[i], output_volumes[i], volumes_generated[i], dice_scores)
+            metrics_table.add_data(total, nodule_id_a, nodule_id_b, input_volumes[i], output_volumes[i], volumes_generated[i], dice_scores)
 
             if examples_saved < max_examples:
 
@@ -201,12 +231,15 @@ if __name__=="__main__":
                 save_two_figs_side_by_side(fig_output, fig_generated, out_path=f"{location}/{total}_output_generated.png", title="Real Output vs Generated Output", subtitle_1=f"Given Output Vol={output_volumes[i]}", subtitle_2=f"Generated Output Vol={volumes_generated[i]}")
                 save_two_figs_side_by_side(fig_input, fig_generated, out_path=f"{location}/{total}_input_generated.png", title="Input vs Generated Output", subtitle_1=f"Input Vol={input_volumes[i]}", subtitle_2=f"Generated Output Vol={volumes_generated[i]}")
                 save_three_figs_side_by_side(fig_input, fig_output, fig_generated, out_path=f"{location}/{total}_input_output_generated.png", title=f"Input vs Real Output vs Generated Output", subtitle_1=f"Input Vol={input_volumes[i]}", subtitle_2=f"Real Output Vol={output_volumes[i]}", subtitle_3=f"Generated Output Vol={volumes_generated[i]}", bottom_text=f"Nodule Input ID is {nodule_id_a}; Nodule Output ID is {nodule_id_b}")
+                save_three_figs_side_by_side(fig_input_montage, fig_output_montage, fig_generated_montage, out_path=f"{location}/{total}_input_output_generated_no_bbox.png", title=f"Input vs Real Output vs Generated Output", subtitle_1=f"Input Vol={input_volumes[i]}", subtitle_2=f"Real Output Vol={output_volumes[i]}", subtitle_3=f"Generated Output Vol={volumes_generated[i]}", bottom_text=f"Nodule Input ID is {nodule_id_a}; Nodule Output ID is {nodule_id_b}")
+
 
                 wandb.log({
                     "input_output": wandb.Image(f"{location}/{total}_input_output.png"),
                     "output_generated": wandb.Image(f"{location}/{total}_output_generated.png"),
                     "input_generated": wandb.Image(f"{location}/{total}_input_generated.png"),
                     "all_three": wandb.Image(f"{location}/{total}_input_output_generated.png"),
+                    "all_three_no_bbox": wandb.Image(f"{location}/{total}_input_output_generated_no_bbox.png"),
                     "input": wandb.Image(fig_input),
                     "output": wandb.Image(fig_output),
                     "generated": wandb.Image(fig_generated),
@@ -218,6 +251,9 @@ if __name__=="__main__":
                 plt.close(fig_input)
                 plt.close(fig_output)
                 plt.close(fig_generated)
+                plt.close(fig_input_montage)
+                plt.close(fig_output_montage)
+                plt.close(fig_generated_montage)
 
                 examples_saved += 1
                 print(f"Examples saved: {examples_saved}")
