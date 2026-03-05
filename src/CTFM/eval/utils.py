@@ -59,7 +59,7 @@ class ImageEvaluatorPrep:
         return x_t
 
 @torch.no_grad()
-def sample_euler(v_fn, input: Tensor, n_steps: int = 50, reverse=False):
+def sample_euler(v_fn, input: Tensor, condition=None, n_steps: int = 50, reverse=False):
     """
     v_fn: callable (x_t, t_vec) -> v_t
           expects t_vec shape (B,)
@@ -74,9 +74,9 @@ def sample_euler(v_fn, input: Tensor, n_steps: int = 50, reverse=False):
         dt = t1 - t0
         t = t0.expand(B)
         if reverse:
-            v = v_fn(t, x_t)  # your UNet expects (t, x)
+            v = v_fn(t, x_t, y=condition)  # your UNet expects (t, x)
         else:
-            v = v_fn(x_t, t)  # your UNet expects (x, t)
+            v = v_fn(x_t, t, y=condition)  # your UNet expects (x, t)
         x_t = x_t + v * dt
     return x_t
 
