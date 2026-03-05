@@ -49,6 +49,7 @@ class UnetLightning3D(pl.LightningModule):
                  convert_from_hu=True,
                  debug_flag=False, 
                  bbox_file = None,
+                 bbox_weight=None,
                  time_context_dim = None,
                 ):
         """
@@ -69,6 +70,7 @@ class UnetLightning3D(pl.LightningModule):
             bbox_file: str or None - if the path is provided it will heavily weight the loss around the bounding boxes
                 This should only be used when passing in the original volumes not the encoded ones
                 It will only work if input channels is 1
+            bbox_weight: int or None - If using a bbox_file the weight to put on that box
             time_context_dim: int or None - if provided, it will be used to condition the model on the time between scans
         """
         super().__init__()
@@ -121,6 +123,8 @@ class UnetLightning3D(pl.LightningModule):
         if bbox_file is not None and self.input_channels == 1:
             with open(bbox_file, "r") as f:
                 self.bboxes = json.load(f)
+            self.bbox_weight = bbox_weight
+            self.roi_alpha = .9
         else:
             self.bboxes = None
 
@@ -229,9 +233,10 @@ class UnetLightning3D(pl.LightningModule):
 
         if self.bboxes is not None:
             B, _, D, H, W = vt.shape
-            margin = 4
-            w_bg, w_roi = 1.0, 10.0
+            margin = 8
+            w_bg, w_roi = 1.0, self.bbox_weight
             w = torch.full((B, 1, D, H, W), w_bg, device=vt.device)
+            # roi_mask = torch.zeros((B, 1, D, H, W), device=vt.device, dtype=torch.bool)
 
             for b in range(B):
 
@@ -240,11 +245,21 @@ class UnetLightning3D(pl.LightningModule):
                 h0a,h1a,w0a,w1a,d0a,d1a = self.bboxes[nodule_id_a]["bbox"]
                 h0b,h1b,w0b,w1b,d0b,d1b = self.bboxes[nodule_id_b]["bbox"]
 
-                h0 = max(0, min(h0a, h0b) - margin); h1 = min(H, max(h1a, h1b) + margin)
-                w0 = max(0, min(w0a, w0b) - margin); w1 = min(W, max(w1a, w1b) + margin)
-                d0 = max(0, min(d0a, d0b) - margin); d1 = min(D, max(d1a, d1b) + margin)
+                h0 = max(0, min(h0a, h0b) - margin); h1 = min(H - 1, max(h1a, h1b) + margin)
+                w0 = max(0, min(w0a, w0b) - margin); w1 = min(W - 1, max(w1a, w1b) + margin)
+                d0 = max(0, min(d0a, d0b)); d1 = min(D - 1, max(d1a, d1b))
 
-                w[b, :, d0:d1, h0:h1, w0:w1] = w_roi
+                w[b, :, d0:d1 + 1, h0:h1 + 1, w0:w1 + 1] = w_roi
+                # roi_mask[b, :, d0:d1+1, h0:h1+1, w0:w1+1] = True
+
+            # alpha = self.roi_alpha  # e.g., 0.8 (ROI gets 80% of the objective)
+
+            # err2 = (vt - ut).pow(2)                         # (B,1,D,H,W)
+    
+            # roi_loss = (err2[roi_mask]).mean() if roi_mask.any() else err2.mean()
+            # bg_loss  = (err2[~roi_mask]).mean()  if ~roi_mask.any()  else err2.mean()
+
+            # loss = alpha * roi_loss + (1.0 - alpha) * bg_loss
 
             loss = (w * (vt - ut).pow(2)).sum() / (w.sum() + 1e-8)
         else:
@@ -269,8 +284,8 @@ class UnetLightning3D(pl.LightningModule):
         optimizer = torch.optim.AdamW(self.model.parameters(), lr=self.lr)
         
         # The optimizer will include the max learning rate
-        warmup = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=1e-2, total_iters=warmup_steps)  # start_factor must > 0
-        cosine = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=decay_steps, eta_min=5e-5)
+        warmup = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=1e-3, total_iters=warmup_steps)  # start_factor must > 0
+        cosine = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=decay_steps, eta_min=2e-5)
         sched  = torch.optim.lr_scheduler.SequentialLR(optimizer, [warmup, cosine], milestones=[warmup_steps])
 
         return {"optimizer": optimizer, "lr_scheduler": {"scheduler": sched, "interval": "step"}}
@@ -464,7 +479,7 @@ class UnetLightning3D(pl.LightningModule):
             x_input = torch.randn(self.num_val_images, x1.shape[1], x1.shape[2], x1.shape[3], x1.shape[4]).to(x1.device)
             x_target = None
 
-        x_output = self.generate_images(x_input, time_delta=time_delta)
+        x_output = self.generate_images(x_input, time_delta=time_delta[:self.num_val_images])
 
         images = x_output.view([-1, self.input_channels, self.image_size[0], self.image_size[1], self.image_size[2]]) 
 
@@ -477,6 +492,8 @@ class UnetLightning3D(pl.LightningModule):
 
         images = images.clip(-1, 1)
         x_input = x_input.clip(-1, 1)
+        if x_target is not None:
+            x_target = x_target.clip(-1, 1)
 
         # torch.cuda.synchronize()  # ensure previous CUDA ops finish
         # t0 = time.perf_counter()
@@ -540,7 +557,7 @@ class UnetLightning3D(pl.LightningModule):
         t, xt, ut = self.FM.sample_location_and_conditional_flow(x0, x1)
         vt = self(xt, t, delta)
         val_loss = torch.mean((vt - ut) ** 2)
-        self.log("val_loss", val_loss.detach().float(), on_step=False, on_epoch=True, prog_bar=False, logger=True, sync_dist=True)
+        self.log("val_loss", val_loss.detach().float(), on_step=False, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
 
         # Now save the output of the model on a test image
         # Only want return the evaluation image on the first gpu
