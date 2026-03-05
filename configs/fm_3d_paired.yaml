@@ -1,10 +1,12 @@
 wandb_project: paired_model_3d_fm_rand
-wandb_run_name: all_image_raw
-experiment_name: all_image_raw
+wandb_run_name: time_stable_all_percent90_smaller_bbox
+experiment_name: time_stable_all_percent90_smaller_bbox
 debug_flag: false
-train_batch_size: 1
+train_batch_size: 2
 test_batch_size: 1
-lr: 0.0005
+lr: 0.0002
 img_size:  [32, 128, 128] # [16, 16, 16]
 num_samples: null
-num_devices: 3
+num_devices: 4
+time_context_dim: 128 # If this is not None it must be the dimmension of the last dimention of channels
+max_epochs: 150

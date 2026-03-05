@@ -23,6 +23,7 @@ nodule_tracked_parquet: /data/rbg/users/duitz/CT-generative-pred/metadata/nlst_n
 saved_transforms_file: /data/rbg/users/duitz/CT-generative-pred/metadata/exam_to_nifti_transformed.pkl
 vae_3d_checkpoint_path: placeholder_for_3d_vae_checkpoint_path.pt
 test_small_bboxes_raw: /data/rbg/users/duitz/CT-generative-pred/metadata/test_raw_data_nodule_original_boxes.json
+train_small_bboxes_raw: /data/rbg/users/duitz/CT-generative-pred/metadata/train_raw_data_nodule_original_boxes.json
 test_small_bboxes_encoded: /data/rbg/users/duitz/CT-generative-pred/metadata/test_encoded_data_nodule_original_boxes.json
 
 
