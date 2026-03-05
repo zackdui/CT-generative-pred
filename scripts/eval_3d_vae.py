@@ -2,7 +2,7 @@ import sys
 import os
 
 # For local use of vae3d2d module
-sys.path.insert(0, "/data/rbg/users/duitz/VAE3d/src")
+# sys.path.insert(0, "/data/rbg/users/duitz/VAE3d/src")
 from vae3d2d import CustomVAE, AttnParams, setup_logger, eval_model_3D
 
 from CTFM.utils import load_config, OPTIMIZERS

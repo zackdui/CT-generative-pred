@@ -4,7 +4,7 @@ from torchview import draw_graph
 from monai.networks.nets import DiffusionModelUNet
 
 # For local use of vae3d2d module
-sys.path.insert(0, "/data/rbg/users/duitz/VAE3d/src")
+# sys.path.insert(0, "/data/rbg/users/duitz/VAE3d/src")
 from vae3d2d import CustomVAE, AttnParams
 
 from CTFM.utils import load_config
