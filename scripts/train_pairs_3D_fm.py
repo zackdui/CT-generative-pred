@@ -38,7 +38,8 @@ def main(model_checkpoint, # Can be None
          decode_model=None,
          single_image=False,
          repeat_count=20000,
-         train_bboxes=None):
+         train_bboxes=None,
+         bbox_weight=None):
 
     debug_flag = training_args.debug_flag
     train_batch_size = training_args.train_batch_size
@@ -66,8 +67,10 @@ def main(model_checkpoint, # Can be None
         meta_data = train_dataset[0][1]
         train_dataset = RepeatedImageDataset(image_both, repeat_count, meta_data=meta_data)
         val_dataset = RepeatedImageDataset(image_both, 4, meta_data=meta_data)
-        train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True, num_workers=0, collate_fn=collate_image_meta)
-        val_loader = DataLoader(val_dataset, batch_size=2, shuffle=False, num_workers=0, collate_fn=collate_image_meta)
+        train_loader = DataLoader(train_dataset, batch_size=train_batch_size, shuffle=True, num_workers=0, collate_fn=collate_image_meta)
+        val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=0, collate_fn=collate_image_meta)
+        torch.save(image_in.detach().cpu(), "image_in_final.pt")
+        torch.save(image_out.detach().cpu(), "image_out_final.pt")
         if decode_model is not None:
             decode_model.eval()
             with torch.no_grad():
@@ -106,7 +109,7 @@ def main(model_checkpoint, # Can be None
         )
 
     if model_checkpoint is None:
-        light_model = UnetLightning3D(DiffusionModelUNet, unet_kwargs, paired_input=True, lr=lr, output_dir=run_output_dir, input_channels=unet_3d_cfm_configs.in_channels, decode_model=decode_model, img_size=training_args.img_size, bbox_file=train_bboxes, time_context_dim=training_args.time_context_dim)
+        light_model = UnetLightning3D(DiffusionModelUNet, unet_kwargs, paired_input=True, lr=lr, output_dir=run_output_dir, input_channels=unet_3d_cfm_configs.in_channels, decode_model=decode_model, img_size=training_args.img_size, bbox_file=train_bboxes, bbox_weight=bbox_weight, time_context_dim=training_args.time_context_dim)
     else:
         light_model = UnetLightning3D.load_from_checkpoint(
                                                     model_checkpoint,
@@ -116,6 +119,7 @@ def main(model_checkpoint, # Can be None
                                                     paired_input=True,
                                                     output_dir=run_output_dir,
                                                     bbox_file=train_bboxes,
+                                                    bbox_weight=bbox_weight,
                                                     time_context_dim=training_args.time_context_dim
                                                 )
 
@@ -173,7 +177,7 @@ def main(model_checkpoint, # Can be None
                             gradient_clip_algorithm="norm",
                             strategy=DDPStrategy(),
                             check_val_every_n_epoch=1,
-                            limit_val_batches=10,
+                            limit_val_batches=100,
                             precision="bf16-mixed") # I only want it to validate one batch each time
                        
     trainer.fit(model=light_model, train_dataloaders=train_loader, val_dataloaders=val_loader)
@@ -250,6 +254,7 @@ if __name__ == "__main__":
     decode_model_checkpoint = None # "/data/rbg/users/duitz/CT-generative-pred/final_saved_models/vae_fixed_std_no_reg.pt"
     pretrained_model_checkpoint = None # "/data/rbg/users/duitz/CT-generative-pred/experiments/fm_3d_pretrain/full_latent/lightning_logs/version_1/checkpoints/val-epoch=429-val_loss=0.32.ckpt"
     train_bboxes = "/data/rbg/users/duitz/CT-generative-pred/metadata/train_raw_data_nodule_original_boxes.json"
+    bbox_weight = 10000.0
 
     base_paths = load_config(path_yaml)
     training_args = load_config(training_configs)
@@ -286,6 +291,7 @@ if __name__ == "__main__":
          decode_model=decode_model, 
          single_image=single_image, 
          repeat_count=repeat_count, 
-         train_bboxes=train_bboxes)
+         train_bboxes=train_bboxes,
+         bbox_weight=bbox_weight)
 
 
