@@ -1,14 +1,10 @@
 # TODO
+NOTE: This todo is not up to date.
 
-## Final Experiments I really want to run
-- [ ] Flow matching on images themselves not encoded (32, 128, 128)
+## Future Experiments
 - [ ] Flow matching on images themselves not encoded (16, 64, 64)
-- [ ] Encoded post training without time
-- [ ] Encoded post training with time
-- [ ] Loss that sometimes only takes into account the region with the nodule
+- [ ] Flow matching when blocking out the blood vessels
 - [ ] Try Eagle loss for the encoder
-- [ ] Implement the additional time component that I want to embed and try concatenation vs adding for the flow matching model because I will need it to be evaluated
-- [ ] run 2d generation again
 
 ---
 

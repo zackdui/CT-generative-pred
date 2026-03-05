@@ -2,7 +2,7 @@
 
 ## Overview
 
-This repository implements generative modeling of lung CT scans with a focus on **temporal progression modeling of pulmonary nodules** using latent Flow Matching.
+This repository implements generative modeling of lung CT scans with a focus on **temporal progression modeling of pulmonary nodules** using Flow Matching.
 
 The core objective of this project is:
 
@@ -17,7 +17,7 @@ The repository contains:
 * A full NLST data construction pipeline
 * Modular reusable modeling components
 
-Generative models operate both in **latent space** and in pixel space for high-resolution image generation.
+Generative models operate both in latent space and in pixel space for high-resolution image generation.
 
 
 ---
@@ -48,6 +48,7 @@ All modules are importable from:
 
 ```
 CTFM.data
+CTFM.eval
 CTFM.models
 CTFM.utils
 ```
@@ -79,13 +80,13 @@ Next, install the package in editable mode (from the repo root directory where R
 pip install -e .
 ```
 
-### Note: All the modules are importable from CTFM.data/models/utils
+### Note: All the modules are importable from CTFM.data/eval/models/utils
 
 ---
 
 ## Loading Data
 
-In `docs/process.md` you will find a full overview of the NLST data construction pipeline which  contains a complete workflow from raw NLST DICOM scans to training-ready tensors..
+In `docs/process.md` you will find a full overview of the NLST data construction pipeline which  contains a complete workflow from raw NLST DICOM scans to training-ready tensors.
 
 Below is a high-level summary.
 
