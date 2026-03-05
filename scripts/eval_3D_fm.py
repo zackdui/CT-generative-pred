@@ -5,6 +5,7 @@ from torch.utils.data import DataLoader
 import torch
 import wandb
 import matplotlib.pyplot as plt
+from tqdm import tqdm
 
 # For local use of vae3d2d module
 # import sys
@@ -15,14 +16,16 @@ from CTFM.utils import load_config
 from CTFM.data import (CachedNoduleDataset, 
                        collate_image_meta, 
                        save_montage, 
-                       save_two_figs_side_by_side)
+                       save_two_figs_side_by_side,
+                       save_three_figs_side_by_side)
 from CTFM.models import UnetLightning3D
 from CTFM.eval import (load_segmentation_models, 
                        ImageEvaluatorPrep, 
                        patch_segmenter, 
                        get_volumes, 
                        save_montage_with_bbox3d,
-                       dice_score)
+                       dice_score,
+                       visualize_segmentation)
 
 
 
@@ -37,15 +40,15 @@ if __name__=="__main__":
     pixel_spacing_non_interpolate = [0.703125, 0.703125, 2.5]
     pixel_spacing_interpolate = [0.703125 / 2, 0.703125 / 2, 2.5]
     max_dataset_size=None
-    max_examples = 5
-    location = "/data/rbg/users/duitz/CT-generative-pred/experiments/fm_3d_paired/results/one"
+    max_examples = 10
+    location = "/data/rbg/users/duitz/CT-generative-pred/experiments/fm_3d_paired/results/encoded_eval_final"
 
     os.makedirs(location, exist_ok=True)
 
     ## Set up wandb
     wandb.init(
         project="lung-ct-eval",
-        name="flow_matching_eval_one",
+        name="final_encoded_rand",
         job_type="eval",
         config={
             "fm_model_checkpoint": fm_model_checkpoint,
@@ -150,7 +153,7 @@ if __name__=="__main__":
     confidence_model.eval().to("cuda")
 
     ## Run Evaluation
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers = 2, drop_last=False, collate_fn=collate_image_meta)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=0, drop_last=False, collate_fn=collate_image_meta)
     evaluator_prep_interp = ImageEvaluatorPrep(vae_model, lit, n_steps=100, reverse_input=False, interpolate=True)
     evaluator_prep_no_interp = ImageEvaluatorPrep(vae_model, lit, n_steps=100, reverse_input=False, interpolate=False)
 
@@ -164,7 +167,7 @@ if __name__=="__main__":
 
     print(len(test_loader))
 
-    for batch in test_loader:
+    for batch in tqdm(test_loader):
         images, meta = batch
         
         input_images, output_images = torch.chunk(images, 2, dim=1)
@@ -187,13 +190,16 @@ if __name__=="__main__":
         volumes_generated = get_volumes(binary_segmentation_generated, pixel_spacing=pixel_spacing_interpolate)
         
         # import pdb; pdb.set_trace()
-        table = wandb.Table(columns=["id", "Input", "Output", "Generated"])
 
         input_bboxes = []
         output_bboxes = []
         generated_bbox = []
         input_volumes = []
         output_volumes = []
+        if examples_saved < max_examples:
+            visualize_segmentation(sampled_input_images_interp, binary_segmentation_generated, output_path=location, code=f"{total}_eval_encoded_gen")
+            visualize_segmentation(preped_output_images_interp, binary_segmentation_output, output_path=location, code=f"{total}_eval_encoded_output")
+
         for i in range(len(meta)):
             total += 1
             nodule_id_a = f"{meta[i]['nodule_group_a']}_{meta[i]['exam_a']}_{meta[i]['exam_idx_a']}"
@@ -230,8 +236,8 @@ if __name__=="__main__":
 
             if examples_saved < max_examples:
 
-                fig_input = save_montage_with_bbox3d(preped_input_images_interp[i], out_path="", save_fig=False, return_fig=True) #, bbox_yxz=input_bboxes[i])
-                fig_output = save_montage_with_bbox3d(preped_output_images_interp[i], out_path="", save_fig=False, return_fig=True) #, bbox_yxz=output_bboxes[i])
+                fig_input = save_montage_with_bbox3d(preped_input_images_interp[i], out_path="", save_fig=False, return_fig=True, bbox_yxz=input_bboxes[i])
+                fig_output = save_montage_with_bbox3d(preped_output_images_interp[i], out_path="", save_fig=False, return_fig=True, bbox_yxz=output_bboxes[i])
                 fig_generated = save_montage_with_bbox3d(sampled_input_images_interp[i], out_path="", save_fig=False, return_fig=True, bbox_yxz=generated_bbox[i])
 
                 fig_input_montage = save_montage(preped_input_images_interp[i], out_path="", title=f"Input Fig {total}", save_fig=False, return_fig=True)
@@ -241,11 +247,16 @@ if __name__=="__main__":
                 save_two_figs_side_by_side(fig_input, fig_output, out_path=f"{location}/{total}_input_output.png", title="Input vs Real Output", subtitle_1="Input", subtitle_2="Output")
                 save_two_figs_side_by_side(fig_output, fig_generated, out_path=f"{location}/{total}_output_generated.png", title="Real Output vs Generated Output", subtitle_1="Given Output", subtitle_2="Generated Output")
                 save_two_figs_side_by_side(fig_input, fig_generated, out_path=f"{location}/{total}_input_generated.png", title="Input vs Generated Output", subtitle_1="Input", subtitle_2="Generated Output")
+                save_three_figs_side_by_side(fig_input, fig_output, fig_generated, out_path=f"{location}/{total}_input_output_generated.png", title=f"Input vs Real Output vs Generated Output", subtitle_1=f"Input Vol={input_volumes[i]}", subtitle_2=f"Real Output Vol={output_volumes[i]}", subtitle_3=f"Generated Output Vol={volumes_generated[i]}", bottom_text=f"Nodule Input ID is {nodule_id_a}; Nodule Output ID is {nodule_id_b}")
+                save_three_figs_side_by_side(fig_input_montage, fig_output_montage, fig_generated_montage, out_path=f"{location}/{total}_input_output_generated_no_bbox.png", title=f"Input vs Real Output vs Generated Output", subtitle_1=f"Input Vol={input_volumes[i]}", subtitle_2=f"Real Output Vol={output_volumes[i]}", subtitle_3=f"Generated Output Vol={volumes_generated[i]}", bottom_text=f"Nodule Input ID is {nodule_id_a}; Nodule Output ID is {nodule_id_b}")
+
 
                 wandb.log({
                     "input_output": wandb.Image(f"{location}/{total}_input_output.png"),
                     "output_generated": wandb.Image(f"{location}/{total}_output_generated.png"),
                     "input_generated": wandb.Image(f"{location}/{total}_input_generated.png"),
+                    "all_three": wandb.Image(f"{location}/{total}_input_output_generated.png"),
+                    "all_three_no_bbox": wandb.Image(f"{location}/{total}_input_output_generated_no_bbox.png"),
                     "input": wandb.Image(fig_input),
                     "output": wandb.Image(fig_output),
                     "generated": wandb.Image(fig_generated),
@@ -254,14 +265,15 @@ if __name__=="__main__":
                     "generated_no_box": wandb.Image(fig_generated_montage),
                 })
 
-                table.add_data(examples_saved, wandb.Image(fig_input), wandb.Image(fig_output), wandb.Image(fig_generated))
 
                 plt.close(fig_input)
                 plt.close(fig_output)
                 plt.close(fig_generated)
+                plt.close(fig_input_montage)
+                plt.close(fig_output_montage)
+                plt.close(fig_generated_montage)
 
                 examples_saved += 1
-        wandb.log({"eval_samples": table})
 
     wandb.log({"metrics": metrics_table})
     artifact = wandb.Artifact("volumes_table", type="metrics")
